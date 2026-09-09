@@ -1,0 +1,282 @@
+@import url('https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;600;700&family=Playfair+Display:wght@600;700&display=swap');
+
+* {
+    box-sizing: border-box;
+}
+
+body {
+    margin: 0;
+    background: #f7f7f3;
+    color: #20231f;
+    font-family: 'DM Sans', Arial, sans-serif;
+}
+
+/* Sidebar */
+
+.sidebar {
+    position: fixed;
+    left: 0;
+    top: 0;
+    bottom: 0;
+    width: 245px;
+    background: #183b2b;
+    color: #fff;
+    padding: 28px 20px;
+    display: flex;
+    flex-direction: column;
+}
+
+.brand {
+    font-size: 22px;
+    font-weight: 700;
+    margin: 0 10px 42px;
+    display: flex;
+    gap: 10px;
+    align-items: center;
+}
+
+.brand span {
+    font-size: 25px;
+}
+
+.sidebar nav {
+    display: grid;
+    gap: 7px;
+}
+
+.nav,
+.logout {
+    border: 0;
+    background: transparent;
+    color: #d7e4db;
+    text-align: left;
+    padding: 13px 14px;
+    border-radius: 10px;
+    font: inherit;
+    cursor: pointer;
+}
+
+.nav:hover,
+.nav.active {
+    background: #2d5a43;
+    color: white;
+}
+
+.side-bottom {
+    margin-top: auto;
+}
+
+.mini-card {
+    background: #214b37;
+    padding: 16px;
+    border-radius: 14px;
+    margin-bottom: 14px;
+}
+
+.mini-card b,
+.mini-card strong {
+    display: block;
+}
+
+.mini-card b {
+    font-size: 12px;
+    color: #b9cfc2;
+}
+
+.mini-card strong {
+    font-size: 25px;
+    margin-top: 4px;
+}
+
+.logout {
+    width: 100%;
+    background: #f1f5f0;
+    color: #183b2b;
+    text-align: center;
+}
+
+/* Main */
+
+.main {
+    margin-left: 245px;
+    padding: 34px 5vw;
+    max-width: 1500px;
+}
+
+.topbar {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 28px;
+}
+
+.eyebrow {
+    font-size: 11px;
+    letter-spacing: 1.5px;
+    font-weight: 700;
+    color: #718075;
+    margin: 0 0 7px;
+}
+
+.topbar h1 {
+    font-family: 'Playfair Display', serif;
+    font-size: 36px;
+    margin: 0;
+}
+
+.status {
+    background: white;
+    border: 1px solid #e4e8e1;
+    border-radius: 20px;
+    padding: 9px 14px;
+    font-size: 13px;
+}
+
+.status i {
+    display: inline-block;
+    width: 8px;
+    height: 8px;
+    border-radius: 50%;
+    background: #46a86c;
+    margin-right: 7px;
+}
+
+/* Pages */
+
+.page {
+    display: none;
+}
+
+.active-page {
+    display: block;
+}
+
+/* Hero */
+
+.hero {
+    background: #dfe9d8;
+    border-radius: 25px;
+    padding: 42px 48px;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    overflow: hidden;
+}
+
+.hero h2 {
+    font: 700 52px/1.05 'Playfair Display', serif;
+    margin: 0 0 15px;
+}
+
+.hero h2 span {
+    color: #356b4b;
+}
+
+.hero p:not(.eyebrow) {
+    color: #506257;
+    max-width: 430px;
+}
+
+.hero-art {
+    font-size: 54px;
+    line-height: 1.15;
+    text-align: center;
+    transform: rotate(-5deg);
+}
+
+/* Buttons */
+
+button.primary {
+    background: #24543b;
+    color: white;
+    border: 0;
+    padding: 13px 20px;
+    border-radius: 10px;
+    font-weight: 700;
+    cursor: pointer;
+    margin-top: 12px;
+}
+
+button.primary:hover {
+    background: #183b2b;
+}
+
+/* Statistics */
+
+.stats {
+    display: grid;
+    grid-template-columns: repeat(4, 1fr);
+    gap: 15px;
+    margin: 22px 0;
+}
+
+.stat {
+    background: white;
+    border: 1px solid #e5e9e2;
+    border-radius: 16px;
+    padding: 20px;
+}
+
+.stat span,
+.stat small {
+    display: block;
+    color: #778179;
+    font-size: 13px;
+}
+
+.stat b {
+    display: block;
+    font-size: 30px;
+    margin: 8px 0 2px;
+}
+
+/* Section Headings */
+
+.section-head {
+    display: flex;
+    justify-content: space-between;
+    margin: 28px 0 13px;
+}
+
+.section-head h3 {
+    font: 700 25px 'Playfair Display', serif;
+    margin: 0;
+}
+
+/* Tables */
+
+.table-card {
+    background: white;
+    border: 1px solid #e5e9e2;
+    border-radius: 16px;
+    overflow: auto;
+    padding: 5px 18px;
+}
+
+table {
+    width: 100%;
+    border-collapse: collapse;
+}
+
+th,
+td {
+    text-align: left;
+    padding: 16px 8px;
+    border-bottom: 1px solid #edf0eb;
+    font-size: 14px;
+}
+
+th {
+    font-size: 11px;
+    text-transform: uppercase;
+    letter-spacing: 1px;
+    color: #78837b;
+}
+
+.badge {
+    display: inline-block;
+    padding: 5px 9px;
+    border-radius: 8px;
+    font-size: 12px;
+    font-weight: 700;
+}

@@ -1,0 +1,88 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <title>FoodFlow</title>
+  <link rel="stylesheet" href="style.css">
+</head>
+<body>
+  <aside class="sidebar">
+    <div class="brand"><span>🍲</span> FoodFlow</div>
+    <nav>
+      <button class="nav active" data-page="dashboard">Dashboard</button>
+      <button class="nav" data-page="donate">Donate Food</button>
+      <button class="nav" data-page="requests">Food Requests</button>
+      <button class="nav" data-page="pickups">Pickups</button>
+    </nav>
+    <div class="side-bottom">
+      <div class="mini-card"><b>Food saved</b><strong id="sideSaved">0 kg</strong></div>
+      <button class="logout" id="refreshBtn">↻ Refresh data</button>
+    </div>
+  </aside>
+
+  <main class="main">
+    <header class="topbar">
+      <div>
+        <p class="eyebrow">FOOD DISTRIBUTION</p>
+        <h1 id="pageTitle">Dashboard</h1>
+      </div>
+      <div class="status"><i></i> System online</div>
+    </header>
+
+    <section id="dashboard" class="page active-page">
+      <div class="hero">
+        <div>
+          <p class="eyebrow">COMMUNITY IMPACT</p>
+          <h2>Share food.<br><span>Reduce waste.</span></h2>
+          <p>Connect surplus food with people who need it.</p>
+          <button class="primary" data-go="donate">+ Donate food</button>
+        </div>
+        <div class="hero-art">🥗<br>🍎 🥖</div>
+      </div>
+
+      <div class="stats">
+        <div class="stat"><span>Food donated</span><b id="statKg">0 kg</b><small>Total recorded</small></div>
+        <div class="stat"><span>Donations</span><b id="statDonations">0</b><small>Food entries</small></div>
+        <div class="stat"><span>Open requests</span><b id="statRequests">0</b><small>Waiting for food</small></div>
+        <div class="stat"><span>Pickups</span><b id="statPickups">0</b><small>Scheduled</small></div>
+      </div>
+
+      <div class="section-head"><div><p class="eyebrow">RECENT ACTIVITY</p><h3>Latest donations</h3></div></div>
+      <div class="table-card">
+        <table><thead><tr><th>Food</th><th>Quantity</th><th>Donor</th><th>Status</th></tr></thead>
+        <tbody id="recentTable"><tr><td colspan="4" class="empty">Loading...</td></tr></tbody></table>
+      </div>
+    </section>
+
+    <section id="donate" class="page">
+      <div class="form-card">
+        <p class="eyebrow">NEW DONATION</p><h2>Donate surplus food</h2>
+        <form id="donationForm">
+          <label>Food name<input name="food_name" required placeholder="e.g. Cooked rice"></label>
+          <div class="two"><label>Quantity (kg)<input name="quantity_kg" type="number" min="0.1" step="0.1" required></label>
+          <label>Donor name<input name="donor_name" required placeholder="Your name"></label></div>
+          <label>Pickup address<textarea name="pickup_address" required placeholder="Where can it be collected?"></textarea></label>
+          <label>Notes<textarea name="notes" placeholder="Optional details"></textarea></label>
+          <button class="primary" type="submit">Submit donation</button>
+          <p id="formMessage" class="message"></p>
+        </form>
+      </div>
+    </section>
+
+    <section id="requests" class="page">
+      <div class="section-head"><div><p class="eyebrow">COMMUNITY NEEDS</p><h3>Food requests</h3></div></div>
+      <div class="cards" id="requestCards"></div>
+    </section>
+
+    <section id="pickups" class="page">
+      <div class="section-head"><div><p class="eyebrow">LOGISTICS</p><h3>Pickup schedule</h3></div></div>
+      <div class="table-card">
+        <table><thead><tr><th>Food</th><th>Address</th><th>Time</th><th>Status</th></tr></thead>
+        <tbody id="pickupTable"><tr><td colspan="4" class="empty">Loading...</td></tr></tbody></table>
+      </div>
+    </section>
+  </main>
+  <script src="app.js"></script>
+</body>
+</html>
