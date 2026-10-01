@@ -1,6 +1,8 @@
 #include <iostream>
 #include <string>
 #include <vector>
+#include <queue>
+#include <map>
 using namespace std;
 
 // ---------------- Base class ----------------
@@ -50,72 +52,134 @@ struct FoodItem {
              << " | Allergens: " << (allergens.empty() ? "none listed" : allergens) << endl;
     }
 };
+// Min-heap by expiryDays: the food closest to expiring comes out first
+struct CompareExpiry {
+    bool operator()(const FoodItem &a, const FoodItem &b) {
+        return a.expiryDays > b.expiryDays;
+    }
+};
 
-// ---------------- Phase 1 system: pure intake ----------------
-class FoodSurplusManagementSystem
-{
+// ---------------- Phase 2 system: intake + matching ----------------
+class FoodSurplusManagementSystem {
 private:
     vector<Donor> donors;
     vector<NGO> ngos;
-    vector<FoodItem> foodItems;
 
-    int nextUserId = 1, nextFoodId = 1;
+    priority_queue<FoodItem, vector<FoodItem>, CompareExpiry> foodQueue; // urgent food first
+    queue<FoodRequest> requestQueue;                                    // NGO requests, FIFO
+
+    vector<string> history;           // log of completed matches
+    map<int, vector<int>> donorToNgo; // graph: donorId -> ngoIds it has fed
+
+    int nextUserId = 1, nextFoodId = 1, nextRequestId = 1;
 
 public:
-    int registerDonor(const string &name)
-    {
+    // ---- Registration (Phase 1) ----
+    int registerDonor(const string &name) {
         donors.emplace_back(nextUserId, name);
         return nextUserId++;
     }
 
-    int registerNGO(const string &name, const string &requirements)
-    {
+    int registerNGO(const string &name, const string &requirements) {
         ngos.emplace_back(nextUserId, name, requirements);
         return nextUserId++;
     }
 
-    void donateFood(int donorId, const string &foodName, int expiryDays, const string &allergens)
-    {
-        foodItems.push_back({nextFoodId++, donorId, expiryDays, foodName, allergens});
-        cout << "-> Food item recorded.\n";
+    // ---- Donor side: donate food -> goes into the priority queue ----
+    void donateFood(int donorId, const string &foodName, int expiryDays, const string &allergens) {
+        foodQueue.push({nextFoodId++, donorId, expiryDays, foodName, allergens});
+        cout << "-> Added to priority queue.\n";
     }
 
-    void showAllDonors()
-    {
+    // ---- NGO side: request food -> goes into the FIFO queue ----
+    void requestFood(int ngoId, const string &foodName) {
+        requestQueue.push({nextRequestId++, ngoId, foodName});
+        cout << "-> Added to request queue.\n";
+    }
+
+    // ---- Matching: most urgent food + oldest request, paired together ----
+    void matchOne() {
+        if (foodQueue.empty())    { cout << "No food available right now.\n"; return; }
+        if (requestQueue.empty()) { cout << "No pending requests right now.\n"; return; }
+
+        FoodItem food = foodQueue.top();        foodQueue.pop();
+        FoodRequest req = requestQueue.front(); requestQueue.pop();
+
+        cout << "MATCHED: " << food.foodName << " (Donor#" << food.donorId
+             << ") -> NGO#" << req.ngoId << endl;
+
+        donorToNgo[food.donorId].push_back(req.ngoId); // record edge in graph
+        history.push_back("Donor#" + to_string(food.donorId) +
+                           " -> NGO#" + to_string(req.ngoId) +
+                           " (" + food.foodName + ")");
+    }
+
+    void matchAll() {
+        while (!foodQueue.empty() && !requestQueue.empty()) matchOne();
+    }
+
+    // ---- Display helpers ----
+    void showAllDonors() {
         cout << "\n--- Donors ---\n";
         if (donors.empty()) { cout << "  (none registered yet)\n"; return; }
         for (auto &d : donors) d.display();
     }
 
-    void showAllNGOs()
-    {
+    void showAllNGOs() {
         cout << "\n--- NGOs (Recipients) ---\n";
         if (ngos.empty()) { cout << "  (none registered yet)\n"; return; }
         for (auto &n : ngos) n.display();
     }
 
-    void showAllFood()
-    {
-        cout << "\n--- Food Available ---\n";
-        if (foodItems.empty()) { cout << "  (none logged yet)\n"; return; }
-        for (auto &f : foodItems) f.display();
+    void showFoodQueue() {
+        cout << "\n--- Food Priority Queue (most urgent first) ---\n";
+        auto copy = foodQueue;
+        if (copy.empty()) { cout << "  (empty)\n"; return; }
+        while (!copy.empty()) { copy.top().display(); copy.pop(); }
+    }
+
+    void showRequestQueue() {
+        cout << "\n--- NGO Request Queue (FIFO) ---\n";
+        auto copy = requestQueue;
+        if (copy.empty()) { cout << "  (empty)\n"; return; }
+        while (!copy.empty()) { copy.front().display(); copy.pop(); }
+    }
+
+    void showGraph() {
+        cout << "\n--- Donor -> NGO Graph ---\n";
+        if (donorToNgo.empty()) { cout << "  (no matches yet)\n"; return; }
+        for (auto &[donorId, ngoIds] : donorToNgo) {
+            cout << "  Donor#" << donorId << " helped NGO(s): ";
+            for (int ngoId : ngoIds) cout << "#" << ngoId << " ";
+            cout << endl;
+        }
+    }
+
+    void showHistory() {
+        cout << "\n--- Distribution History ---\n";
+        if (history.empty()) { cout << "  (none yet)\n"; return; }
+        for (auto &line : history) cout << "  " << line << endl;
     }
 };
 
 // ---------------- MAIN: simple menu ----------------
-int main()
-{
+int main() {
     FoodSurplusManagementSystem system;
     int choice;
 
     do {
-        cout << "\n===== FOOD SURPLUS MANAGEMENT SYSTEM (Phase 1: Intake) =====\n"
+        cout << "\n===== FOOD SURPLUS MANAGEMENT SYSTEM (Phase 2: Matching) =====\n"
              << "1. Register Donor\n"
              << "2. Donate Food (Donor form)\n"
              << "3. Register NGO (Recipient)\n"
-             << "4. Show All Donors\n"
-             << "5. Show All NGOs\n"
-             << "6. Show All Food Available\n"
+             << "4. Request Food (NGO form)\n"
+             << "5. Match all pending food/requests\n"
+             << "6. Show Food Queue\n"
+             << "7. Show Request Queue\n"
+             << "8. Show Donor-NGO Graph\n"
+             << "9. Show Distribution History\n"
+             << "10. Show All Donors\n"
+             << "11. Show All NGOs\n"
              << "0. Exit\n"
              << "Choice: ";
         cin >> choice;
@@ -124,8 +188,7 @@ int main()
         string name, food, extra;
         int id, days;
 
-        switch (choice)
-        {
+        switch (choice) {
             case 1:
                 cout << "Donor name: "; getline(cin, name);
                 cout << "Registered! Your Donor ID = " << system.registerDonor(name) << endl;
@@ -142,11 +205,21 @@ int main()
                 cout << "Food requirements (comma-separated, or 'none'): "; getline(cin, extra);
                 cout << "Registered! Your NGO ID = " << system.registerNGO(name, extra) << endl;
                 break;
-            case 4: system.showAllDonors(); break;
-            case 5: system.showAllNGOs(); break;
-            case 6: system.showAllFood(); break;
+            case 4:
+                cout << "Your NGO ID: "; cin >> id; cin.ignore();
+                cout << "Food item needed: "; getline(cin, food);
+                system.requestFood(id, food);
+                break;
+            case 5:  system.matchAll(); break;
+            case 6:  system.showFoodQueue(); break;
+            case 7:  system.showRequestQueue(); break;
+            case 8:  system.showGraph(); break;
+            case 9:  system.showHistory(); break;
+            case 10: system.showAllDonors(); break;
+            case 11: system.showAllNGOs(); break;
         }
     } while (choice != 0);
 
     return 0;
 }
+
