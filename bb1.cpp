@@ -52,6 +52,17 @@ struct FoodItem {
              << " | Allergens: " << (allergens.empty() ? "none listed" : allergens) << endl;
     }
 };
+
+// ---------------- FIX: this struct was missing, causing a compile error
+//                   wherever queue<FoodRequest> / FoodRequest was used ----------------
+struct FoodRequest {
+    int id, ngoId;
+    string foodName;
+    void display() const {
+        cout << "Request#" << id << " [" << foodName << "] by NGO#" << ngoId << endl;
+    }
+};
+
 // Min-heap by expiryDays: the food closest to expiring comes out first
 struct CompareExpiry {
     bool operator()(const FoodItem &a, const FoodItem &b) {
@@ -222,4 +233,3 @@ int main() {
 
     return 0;
 }
-
