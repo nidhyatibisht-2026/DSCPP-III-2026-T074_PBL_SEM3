@@ -4,8 +4,6 @@
 #include <queue>
 #include <map>
 using namespace std;
-
-// ---------------- Base class ----------------
 class User {
 protected:
     int id;
