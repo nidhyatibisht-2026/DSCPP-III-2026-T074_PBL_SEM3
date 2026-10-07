@@ -78,17 +78,22 @@ public:
 };
 
 class NGO : public User {
-    string requirements;         // what this recipient needs
+    string requirements;         // food items this recipient needs
     string allergyRestrictions;  // allergens this recipient CANNOT accept
+    string foodTypePreference;   // Veg, Non-Veg, or Any
 public:
-    NGO(int id, string name, string requirements, string allergyRestrictions)
-        : User(id, name), requirements(requirements), allergyRestrictions(allergyRestrictions) {}
+    NGO(int id, string name, string requirements, string allergyRestrictions, string foodTypePreference)
+        : User(id, name), requirements(requirements),
+          allergyRestrictions(allergyRestrictions), foodTypePreference(foodTypePreference) {}
 
+    string getRequirements() const { return requirements; }
     string getAllergyRestrictions() const { return allergyRestrictions; }
+    string getFoodTypePreference() const { return foodTypePreference; }
 
     void display() const override {
         cout << "NGO #" << id << " - " << name
              << " | Needs: " << (requirements.empty() ? "(not specified)" : requirements)
+             << " | Food Type: " << foodTypePreference
              << " | Cannot accept: " << (allergyRestrictions.empty() ? "(none stated)" : allergyRestrictions)
              << endl;
     }
@@ -142,8 +147,8 @@ private:
     // Linked list for complete food inventory.
     FoodNode* foodHead = nullptr;
 
-    // Min-heap priority queue PER food name for expiry-based matching.
-    map<string, priority_queue<FoodItem, vector<FoodItem>, CompareExpiry>> foodQueuesByName;
+    // Global min-heap: the food closest to expiry has highest priority.
+    priority_queue<FoodItem, vector<FoodItem>, CompareExpiry> foodExpiryQueue;
 
     // Hash table: allergen -> food IDs containing that allergen.
     unordered_map<string, vector<int>> allergyHashTable;
@@ -202,6 +207,15 @@ private:
     }
 
     // true if none of the food's allergens appear in the NGO's restriction list
+    bool isRequirementSatisfied(const string &foodName, const string &requirements) {
+        vector<string> required = splitTokens(requirements);
+        if (required.empty()) return true;
+        string key = toLower(trim(foodName));
+        for (const string &r : required)
+            if (key == r) return true;
+        return false;
+    }
+
     bool isAllergySafe(const string &itemAllergens, const string &ngoRestrictions) {
         vector<string> restricted = splitTokens(ngoRestrictions);
         if (restricted.empty()) return true; // NGO stated no restrictions
@@ -215,47 +229,84 @@ private:
     }
 
     bool tryMatch(const FoodRequest &req) {
-        string key = toLower(trim(req.foodName));
-        auto it = foodQueuesByName.find(key);
-        if (it == foodQueuesByName.end() || it->second.empty()) return false;
-
-        auto &pq = it->second;
         NGO *ngo = findNgoById(req.ngoId);
-        string restrictions = ngo ? ngo->getAllergyRestrictions() : "";
+        if (!ngo) return false;
+
+        // 1. NGO requirement must include the requested food (unless no requirement was specified).
+        if (!isRequirementSatisfied(req.foodName, ngo->getRequirements())) {
+            cout << "No match: " << req.foodName
+                 << " is not in NGO#" << req.ngoId << " requirements.\n";
+            return false;
+        }
+
+        string requestedFood = toLower(trim(req.foodName));
+        string preferredType = ngo->getFoodTypePreference();
+        string restrictions = ngo->getAllergyRestrictions();
 
         vector<FoodItem> setAside;
         bool found = false;
         FoodItem matched{};
 
-        while (!pq.empty()) {
-            FoodItem candidate = pq.top(); pq.pop();
-            if (isAllergySafe(candidate.allergens, restrictions)) {
+        // Global min-heap: inspect food from earliest expiry first.
+        while (!foodExpiryQueue.empty()) {
+            FoodItem candidate = foodExpiryQueue.top();
+            foodExpiryQueue.pop();
+
+            bool sameFood = (toLower(trim(candidate.foodName)) == requestedFood);
+            bool typeOkay = (preferredType == "Any" || candidate.foodType == preferredType);
+            bool allergyOkay = isAllergySafe(candidate.allergens, restrictions);
+
+            if (sameFood && typeOkay && allergyOkay) {
                 matched = candidate;
                 found = true;
                 break;
             }
-            setAside.push_back(candidate); // unsafe for THIS ngo, try next
+
+            // Not suitable for this request, so keep it available for other requests.
+            setAside.push_back(candidate);
         }
-        for (auto &item : setAside) pq.push(item); // return unsafe items to the pool
+
+        // Restore all food that was not matched.
+        for (auto &item : setAside) foodExpiryQueue.push(item);
 
         if (!found) return false;
+
+        // Remove the matched food from the linked-list inventory as well.
+        FoodNode *current = foodHead;
+        FoodNode *previous = nullptr;
+        while (current) {
+            if (current->item.id == matched.id) {
+                if (previous) previous->next = current->next;
+                else foodHead = current->next;
+                delete current;
+                break;
+            }
+            previous = current;
+            current = current->next;
+        }
+
+        // Remove the matched food from the allergen lookup table.
+        for (const string &allergen : splitTokens(matched.allergens)) {
+            auto it = allergyHashTable.find(allergen);
+            if (it != allergyHashTable.end()) {
+                auto &ids = it->second;
+                ids.erase(remove(ids.begin(), ids.end(), matched.id), ids.end());
+                if (ids.empty()) allergyHashTable.erase(it);
+            }
+        }
 
         cout << "MATCHED: " << matched.foodName
              << " [" << matched.foodType << "]"
              << " (Donor#" << matched.donorId
              << ") -> NGO#" << req.ngoId << endl;
-
-        // Show the pickup address to the recipient after successful matching.
-        cout << "PICKUP ADDRESS: "
-             << matched.pickupAddress << endl;
+        cout << "EXPIRY PRIORITY: " << matched.expiryDays << " day(s) remaining\n";
+        cout << "PICKUP ADDRESS: " << matched.pickupAddress << endl;
 
         donorToNgo[matched.donorId].push_back(req.ngoId);
-
         history.push_back("Donor#" + to_string(matched.donorId) +
                            " -> NGO#" + to_string(req.ngoId) +
                            " (" + matched.foodName + ", " + matched.foodType +
                            ") | Pickup: " + matched.pickupAddress);
-
         return true;
     }
 
@@ -275,8 +326,8 @@ public:
         return nextUserId++;
     }
 
-    int registerNGO(const string &name, const string &requirements, const string &allergyRestrictions) {
-        ngos.emplace_back(nextUserId, name, requirements, allergyRestrictions);
+    int registerNGO(const string &name, const string &requirements, const string &allergyRestrictions, const string &foodTypePreference) {
+        ngos.emplace_back(nextUserId, name, requirements, allergyRestrictions, foodTypePreference);
         return nextUserId++;
     }
 
@@ -304,9 +355,8 @@ public:
 
         // 1. Linked-list inventory
         addToFoodInventory(item);
-        // 2. Min-heap for expiry priority
-        string key = toLower(trim(foodName));
-        foodQueuesByName[key].push(item);
+        // 2. Global min-heap for expiry priority
+        foodExpiryQueue.push(item);
         // 3. Hash table for allergy lookup
         addToAllergyHash(item);
 
@@ -358,14 +408,10 @@ public:
     void lookupAllergyPublic(const string& allergen) { allergyLookup(allergen); }
 
     void showFoodQueue() {
-        cout << "\n--- Food Priority Queues (grouped by item, most urgent first) ---\n";
-        if (foodQueuesByName.empty()) { cout << "  (empty)\n"; return; }
-        for (auto &[name, pq] : foodQueuesByName) {
-            auto copy = pq;
-            if (copy.empty()) continue;
-            cout << "  [" << name << "]\n";
-            while (!copy.empty()) { cout << "    "; copy.top().display(); copy.pop(); }
-        }
+        cout << "\n--- Global Food Priority Queue (Min-Heap: earliest expiry first) ---\n";
+        auto copy = foodExpiryQueue;
+        if (copy.empty()) { cout << "  (empty)\n"; return; }
+        while (!copy.empty()) { cout << "  "; copy.top().display(); copy.pop(); }
     }
 
     void showRequestQueue() {
@@ -451,7 +497,15 @@ int main() {
                 cout << "Food requirements (comma-separated, or 'none'): "; getline(cin, extra);
                 cout << "Allergy restrictions - food this NGO CANNOT accept (comma-separated, or 'none'): ";
                 getline(cin, extra2);
-                cout << "Registered! Your NGO ID = " << system.registerNGO(name, extra, extra2) << endl;
+                do {
+                    cout << "Preferred food type (1 = Veg, 2 = Non-Veg, 3 = Any): ";
+                    getline(cin, foodType);
+                    if (foodType == "1") foodType = "Veg";
+                    else if (foodType == "2") foodType = "Non-Veg";
+                    else if (foodType == "3") foodType = "Any";
+                    else cout << "Please choose 1, 2 or 3.\n";
+                } while (foodType != "Veg" && foodType != "Non-Veg" && foodType != "Any");
+                cout << "Registered! Your NGO ID = " << system.registerNGO(name, extra, extra2, foodType) << endl;
                 break;
             case 4:
                 id = readInt("Your NGO ID: ");
