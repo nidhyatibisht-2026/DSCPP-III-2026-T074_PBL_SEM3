@@ -1,0 +1,29 @@
+*BUGS*
+
+1-Unrestricted phone input: Accepts letters, symbols, and invalid string lengths as phone numbers, permanently storing malformed contact records.
+
+2-Duplicate phone registration: Allows multiple donors, NGOs, or shelters to register using the exact same phone number, creating identity conflicts.
+
+3-Premature order dispatch: Automatically marks orders as dispatched even when available servings are strictly less than requested quantity.
+
+4-Static allergen mapping: Couples allergen restrictions to the NGO's registration profile rather than allowing dynamic filtering per food request.
+
+5-Redundant recipient overhead: Prompts NGOs and shelters for capacity limits and allergen lists at registration, cluttering the signup flow.
+
+6-Confusing dispatch metadata: Prints recipient address instead of donor pickup address, combines Order and Food IDs on one line, and displays costs in Choice 10.
+
+---
+
+*SOLUTIONS*
+
+1-Strict digit validation: Loop input through character-by-character `isdigit()` checks enforcing exactly 10 numeric digits (`0-9`).
+
+2-Global uniqueness verification: Check `system.isPhoneRegistered(phone)` across the entire user registry before creating any account.
+
+3-Multi-donor pooling & shortfall prompt: Aggregate matching donor lots to fulfill requested quantity; if still short, prompt the recipient to accept partial delivery or wait.
+
+4-Request-level allergen constraints: Prompt for allergen restrictions inside the food request form and filter them dynamically in the matching loop.
+
+5-Streamlined entity onboarding: Eliminate meal capacity and allergy prompts from initial recipient and shelter registration.
+
+6-Clean dispatch logging: Output donor address as pickup location, format Order ID and Food ID on separate lines, and remove cost figures from Choice 10.
