@@ -1,15 +1,23 @@
 #include <iostream>
 #include <string>
+#include <sstream>
+#include <algorithm>
+#include <fstream>
+#include <chrono>
+#include <limits>
 #include <vector>
 #include <queue>
-#include <map>
-#include <algorithm>
-#include <sstream>
-#include <limits>
 #include <cctype>
-using namespace std;
 
-// ================= INPUT / STRING HELPERS =================
+using namespace std;
+using namespace std::chrono;
+
+// Forward declaration
+class FoodRescueSystem;
+
+// ============================================================================
+// 1. INPUT VALIDATION & REAL-TIME HELPERS
+// ============================================================================
 int readInt(const string &prompt) {
     int value;
     while (true) {
@@ -18,1169 +26,1261 @@ int readInt(const string &prompt) {
             cin.ignore(numeric_limits<streamsize>::max(), '\n');
             return value;
         }
-        cout << "Invalid input - enter a whole number.\n";
+        cout << "[Error] Invalid input. Enter a valid number.\n";
         cin.clear();
         cin.ignore(numeric_limits<streamsize>::max(), '\n');
     }
 }
 
-int readNonNegativeInt(const string &prompt) {
+int readMenuChoice(const string &prompt, int minVal, int maxVal) {
     while (true) {
-        int v = readInt(prompt);
-        if (v >= 0) return v;
-        cout << "Value cannot be negative.\n";
+        int choice = readInt(prompt);
+        if ((choice >= minVal && choice <= maxVal) || choice == 999) {
+            return choice;
+        }
+        cout << "[Error] Choice out of range. Enter a number between " << minVal << " and " << maxVal << ".\n";
     }
 }
 
-string toLower(string s) {
-    transform(s.begin(), s.end(), s.begin(),
-              [](unsigned char c) {
-                  return static_cast<char>(tolower(c));
-              });
-    return s;
+int readPositiveInt(const string &prompt) {
+    while (true) {
+        int v = readInt(prompt);
+        if (v > 0) return v;
+        cout << "[Error] Value must be greater than 0.\n";
+    }
 }
 
 string trim(const string &s) {
-    size_t start = s.find_first_not_of(" \t");
-    size_t end = s.find_last_not_of(" \t");
+    size_t start = s.find_first_not_of(" \t\r\n");
+    size_t end = s.find_last_not_of(" \t\r\n");
     if (start == string::npos) return "";
     return s.substr(start, end - start + 1);
 }
 
-vector<string> splitTokens(const string &s) {
+string toLower(string s) {
+    transform(s.begin(), s.end(), s.begin(), ::tolower);
+    return s;
+}
+
+string readNonEmptyLine(const string &prompt) {
+    string s;
+    while (true) {
+        cout << prompt;
+        getline(cin, s);
+        s = trim(s);
+        if (!s.empty()) return s;
+        cout << "[Error] Input cannot be blank. Enter valid text.\n";
+    }
+}
+
+vector<string> splitTokens(const string &str) {
     vector<string> tokens;
-    stringstream ss(s);
-    string part;
-
-    while (getline(ss, part, ',')) {
-        string token = toLower(trim(part));
-        if (token.empty() || token == "none") continue;
-
-        if (find(tokens.begin(), tokens.end(), token) == tokens.end())
-            tokens.push_back(token);
+    stringstream ss(str);
+    string token;
+    while (getline(ss, token, ',')) {
+        string t = toLower(trim(token));
+        if (!t.empty() && t != "none") {
+            tokens.push_back(t);
+        }
     }
     return tokens;
 }
 
-// ================= OOP CLASSES =================
-class User {
-protected:
-    int id;
-    string name;
+long long getCurrentEpochSeconds() {
+    return duration_cast<seconds>(system_clock::now().time_since_epoch()).count();
+}
 
-public:
-    User(int id, const string &name) : id(id), name(name) {}
-    virtual ~User() = default;
-
-    int getId() const { return id; }
-
-    virtual void display() const {
-        cout << "User #" << id << " - " << name << endl;
-    }
+// ============================================================================
+// 2. CORE DOMAIN SCHEMAS
+// ============================================================================
+struct Notification {
+    int userId;
+    string message;
+    long long timestamp;
 };
 
-class Donor : public User {
-    string address;
-
-public:
-    Donor(int id, const string &name, const string &address)
-        : User(id, name), address(address) {}
-
-    string getAddress() const { return address; }
-
-    void display() const override {
-        cout << "Donor #" << id
-             << " - " << name
-             << " | Address: " << address << endl;
-    }
-};
-
-class NGO : public User {
-    string requirements;          // acceptable food names/options
-    string dietaryPreference;     // Any / Veg / Non-Veg
-    string allergyRestrictions;   // allergens this NGO cannot accept
-
-public:
-    NGO(int id, const string &name,
-        const string &requirements,
-        const string &dietaryPreference,
-        const string &allergyRestrictions)
-        : User(id, name),
-          requirements(requirements),
-          dietaryPreference(dietaryPreference),
-          allergyRestrictions(allergyRestrictions) {}
-
-    string getRequirements() const { return requirements; }
-    string getDietaryPreference() const { return dietaryPreference; }
-    string getAllergyRestrictions() const { return allergyRestrictions; }
-
-    void display() const override {
-        cout << "NGO #" << id
-             << " - " << name
-             << " | Needs: "
-             << (requirements.empty() ? "(any)" : requirements)
-             << " | Diet: " << dietaryPreference
-             << " | Cannot accept: "
-             << (allergyRestrictions.empty() ? "(none)" : allergyRestrictions)
-             << endl;
-    }
-};
-
-// ================= FOOD + REQUEST =================
 struct FoodItem {
-    int id;
-    int donorId;
-    int expiryDays;
-    string foodName;
+    int foodID;
+    string name;
+    string category;
+    int quantity;
+    long long prepTimestamp;
+    long long expiryTimestamp;
+    int shelfHours;
+    string dietType;
+    string ingredients;
     string allergens;
-    string foodType;
-    string pickupAddress;
+    string spiceLevel;
+    string extraNotes;
+    int donorID;
+    string donorAddress;
+    bool isAssigned;
+    bool isCancelled;
+    bool isExpired;
+
+    FoodItem() : foodID(0), name(""), category(""), quantity(0), prepTimestamp(0),
+                 expiryTimestamp(0), shelfHours(0), dietType(""), ingredients(""),
+                 allergens(""), spiceLevel(""), extraNotes(""), donorID(0),
+                 donorAddress(""), isAssigned(false),
+                 isCancelled(false), isExpired(false) {}
+
+    FoodItem(int id, string n, string c, int q, long long pTime, long long eTime,
+             int sHrs, string dType, string ing, string alg, string spice,
+             string notes, int dId, string addr)
+        : foodID(id), name(n), category(c), quantity(q), prepTimestamp(pTime),
+          expiryTimestamp(eTime), shelfHours(sHrs), dietType(dType), ingredients(ing),
+          allergens(alg), spiceLevel(spice), extraNotes(notes), donorID(dId),
+          donorAddress(addr), isAssigned(false),
+          isCancelled(false), isExpired(false) {}
+
+    double getRemainingHours() const {
+        long long now = getCurrentEpochSeconds();
+        if (now >= expiryTimestamp) return 0.0;
+        return static_cast<double>(expiryTimestamp - now) / 3600.0;
+    }
+
+    double getRemainingMinutes() const {
+        long long now = getCurrentEpochSeconds();
+        if (now >= expiryTimestamp) return 0.0;
+        return static_cast<double>(expiryTimestamp - now) / 60.0;
+    }
 
     void display() const {
-        cout << "FoodItem#" << id
-             << " [" << foodName << "]"
-             << " | Type: " << foodType
-             << " | Expires in: " << expiryDays << " day(s)"
-             << " | Donor#" << donorId
-             << " | Pickup: " << pickupAddress
-             << " | Allergens: "
-             << (allergens.empty() ? "none" : allergens)
-             << endl;
+        cout << "Food #" << foodID << " [" << name << " | " << dietType << " | Spice: " << spiceLevel << "]\n"
+             << "       Qty: " << quantity << " servings | Remainder: "
+             << getRemainingHours() << " hr(s) (" << getRemainingMinutes() << " mins)\n"
+             << "       Ingredients: " << ingredients << " | Allergens: "
+             << (allergens.empty() ? "None" : allergens) << "\n"
+             << "       Donor #" << donorID << " Address: " << donorAddress
+             << " | Notes: " << extraNotes << "\n";
     }
-};
-
-struct FoodNode {
-    FoodItem item;
-    FoodNode *next;
-
-    FoodNode(const FoodItem &item) : item(item), next(nullptr) {}
 };
 
 struct FoodRequest {
-    int id;
-    int ngoId;
+    int requestID;
+    int recipientID;
     string foodName;
+    int requestedQuantity;
+    string allergyRestrictions;
+    string status;
+    long long requestTimestamp;
+};
 
-    void display() const {
-        cout << "Request#" << id
-             << " [" << foodName
-             << "] by NGO#" << ngoId << endl;
+struct OrderTransaction {
+    int orderID;
+    int foodID;
+    int donorID;
+    int recipientID;
+    int quantity;
+    double deliveryCost;
+    string status;
+    bool donorConfirmed;
+    bool recipientConfirmed;
+    bool isSpoiledComplaint;
+
+    OrderTransaction(int oId, int fId, int dId, int rId, int qty, double cost, string stat)
+        : orderID(oId), foodID(fId), donorID(dId), recipientID(rId), quantity(qty),
+          deliveryCost(cost), status(stat), donorConfirmed(false),
+          recipientConfirmed(false), isSpoiledComplaint(false) {}
+};
+
+// ============================================================================
+// 3. DATA STRUCTURE #1: CUSTOM SEPARATE-CHAINING HASH TABLE
+// ============================================================================
+class HashTable {
+private:
+    struct HashNode {
+        string key;
+        string value;
+        HashNode *next;
+        HashNode(string k, string v) : key(k), value(v), next(nullptr) {}
+    };
+
+    static const int TABLE_SIZE = 101;
+    HashNode *table[TABLE_SIZE];
+
+    int hashFunction(const string &key) const {
+        unsigned long hash = 5381;
+        for (unsigned char c : key) hash = ((hash << 5) + hash) + tolower(c);
+        return hash % TABLE_SIZE;
+    }
+
+public:
+    HashTable() {
+        for (int i = 0; i < TABLE_SIZE; ++i) table[i] = nullptr;
+    }
+
+    ~HashTable() {
+        for (int i = 0; i < TABLE_SIZE; ++i) {
+            HashNode *entry = table[i];
+            while (entry) {
+                HashNode *prev = entry;
+                entry = entry->next;
+                delete prev;
+            }
+            table[i] = nullptr;
+        }
+    }
+
+    void insert(const string &key, const string &value) {
+        string k = toLower(trim(key));
+        int idx = hashFunction(k);
+        HashNode *entry = table[idx];
+        while (entry) {
+            if (entry->key == k) {
+                entry->value = value;
+                return;
+            }
+            entry = entry->next;
+        }
+        HashNode *newNode = new HashNode(k, value);
+        newNode->next = table[idx];
+        table[idx] = newNode;
+    }
+
+    string search(const string &key) const {
+        string k = toLower(trim(key));
+        int idx = hashFunction(k);
+        HashNode *entry = table[idx];
+        while (entry) {
+            if (entry->key == k) return entry->value;
+            entry = entry->next;
+        }
+        return "";
+    }
+
+    string mapIngredientsToAllergens(const string &rawIngredients) const {
+        vector<string> tokens = splitTokens(rawIngredients);
+        string detectedAllergens = "";
+
+        for (const auto &tok : tokens) {
+            string allergen = search(tok);
+            if (!allergen.empty()) {
+                if (detectedAllergens.find(allergen) == string::npos) {
+                    if (!detectedAllergens.empty()) detectedAllergens += ", ";
+                    detectedAllergens += allergen;
+                }
+            }
+        }
+        return detectedAllergens;
     }
 };
 
-// ================= CUSTOM MIN HEAP =================
-// Global heap: earliest expiry has highest priority.
-class FoodMinHeap {
+// ============================================================================
+// 4. DATA STRUCTURE #2: CUSTOM SINGLY LINKED LIST (INVENTORY)
+// ============================================================================
+class FoodInventoryList {
 private:
-    FoodItem *heap;
-    int size;
+    struct Node {
+        FoodItem data;
+        Node *next;
+        Node(const FoodItem &f) : data(f), next(nullptr) {}
+    };
+    Node *head;
+
+public:
+    FoodInventoryList() : head(nullptr) {}
+
+    ~FoodInventoryList() {
+        clear();
+    }
+
+    void clear() {
+        Node *curr = head;
+        while (curr) {
+            Node *temp = curr;
+            curr = curr->next;
+            delete temp;
+        }
+        head = nullptr;
+    }
+
+    FoodItem* insert(const FoodItem &item) {
+        Node *newNode = new Node(item);
+        newNode->next = head;
+        head = newNode;
+        return &(newNode->data);
+    }
+
+    FoodItem* findById(int id) {
+        Node *curr = head;
+        while (curr) {
+            if (curr->data.foodID == id) return &(curr->data);
+            curr = curr->next;
+        }
+        return nullptr;
+    }
+
+    void displayAll() const {
+        if (!head) {
+            cout << "  (Inventory is empty)\n";
+            return;
+        }
+        Node *curr = head;
+        bool any = false;
+        while (curr) {
+            if (!curr->data.isAssigned && !curr->data.isCancelled && !curr->data.isExpired) {
+                curr->data.display();
+                any = true;
+            }
+            curr = curr->next;
+        }
+        if (!any) cout << "  (No active donation items available)\n";
+    }
+
+    template<typename Func>
+    void forEach(Func f) {
+        Node *curr = head;
+        while (curr) {
+            f(curr->data);
+            curr = curr->next;
+        }
+    }
+};
+
+// ============================================================================
+// 5. DATA STRUCTURE #3: CUSTOM BINARY MIN-HEAP (URGENCY RADAR)
+// ============================================================================
+class MinHeapExpiryQueue {
+private:
+    FoodItem** heapArray;
     int capacity;
-
-    bool comesBefore(const FoodItem &a, const FoodItem &b) const {
-        if (a.expiryDays != b.expiryDays)
-            return a.expiryDays < b.expiryDays;
-        return a.id < b.id;
-    }
-
-    void swapItems(FoodItem &a, FoodItem &b) {
-        FoodItem temp = a;
-        a = b;
-        b = temp;
-    }
+    int currentSize;
 
     void heapifyUp(int index) {
         while (index > 0) {
             int parent = (index - 1) / 2;
-
-            if (!comesBefore(heap[index], heap[parent]))
-                break;
-
-            swapItems(heap[index], heap[parent]);
-            index = parent;
+            if (heapArray[index]->expiryTimestamp < heapArray[parent]->expiryTimestamp) {
+                swap(heapArray[index], heapArray[parent]);
+                index = parent;
+            } else break;
         }
     }
 
     void heapifyDown(int index) {
-        while (true) {
+        while (index < currentSize) {
             int left = 2 * index + 1;
             int right = 2 * index + 2;
             int smallest = index;
 
-            if (left < size && comesBefore(heap[left], heap[smallest]))
+            if (left < currentSize && heapArray[left]->expiryTimestamp < heapArray[smallest]->expiryTimestamp)
                 smallest = left;
-
-            if (right < size && comesBefore(heap[right], heap[smallest]))
+            if (right < currentSize && heapArray[right]->expiryTimestamp < heapArray[smallest]->expiryTimestamp)
                 smallest = right;
 
-            if (smallest == index)
-                break;
-
-            swapItems(heap[index], heap[smallest]);
-            index = smallest;
+            if (smallest != index) {
+                swap(heapArray[index], heapArray[smallest]);
+                index = smallest;
+            } else break;
         }
-    }
-
-    void resize() {
-        int newCapacity = capacity * 2;
-        FoodItem *newHeap = new FoodItem[newCapacity];
-
-        for (int i = 0; i < size; ++i)
-            newHeap[i] = heap[i];
-
-        delete[] heap;
-        heap = newHeap;
-        capacity = newCapacity;
     }
 
 public:
-    explicit FoodMinHeap(int initialCapacity = 50)
-        : heap(new FoodItem[initialCapacity]),
-          size(0),
-          capacity(initialCapacity) {}
-
-    FoodMinHeap(const FoodMinHeap &) = delete;
-    FoodMinHeap &operator=(const FoodMinHeap &) = delete;
-
-    ~FoodMinHeap() {
-        delete[] heap;
+    MinHeapExpiryQueue(int cap = 100) : capacity(cap), currentSize(0) {
+        heapArray = new FoodItem*[capacity];
+        for (int i = 0; i < capacity; ++i) heapArray[i] = nullptr;
     }
 
-    bool empty() const { return size == 0; }
-    int getSize() const { return size; }
-
-    void push(const FoodItem &item) {
-        if (size == capacity)
-            resize();
-
-        heap[size] = item;
-        heapifyUp(size);
-        ++size;
+    ~MinHeapExpiryQueue() {
+        delete[] heapArray;
     }
 
-    FoodItem top() const {
-        return heap[0];
-    }
+    bool isEmpty() const { return currentSize == 0; }
 
-    FoodItem pop() {
-        FoodItem result = heap[0];
-        --size;
-
-        if (size > 0) {
-            heap[0] = heap[size];
-            heapifyDown(0);
+    void insert(FoodItem *item) {
+        if (!item) return;
+        if (currentSize == capacity) {
+            int newCap = capacity * 2;
+            FoodItem** newArr = new FoodItem*[newCap];
+            for (int i = 0; i < currentSize; ++i) {
+                newArr[i] = heapArray[i];
+            }
+            for (int i = currentSize; i < newCap; ++i) {
+                newArr[i] = nullptr;
+            }
+            delete[] heapArray;
+            heapArray = newArr;
+            capacity = newCap;
         }
-
-        return result;
+        heapArray[currentSize] = item;
+        heapifyUp(currentSize);
+        currentSize++;
     }
 
-    void clear() {
-        size = 0;
-    }
-
-    void display() const {
-        if (size == 0) {
-            cout << "  (empty)\n";
+    void displayHeap() const {
+        if (isEmpty()) {
+            cout << "  (Urgency Heap is empty)\n";
             return;
         }
-
-        // Copy to a temporary heap so displaying does not destroy the real heap.
-        FoodMinHeap copy(size + 1);
-        for (int i = 0; i < size; ++i)
-            copy.push(heap[i]);
-
-        while (!copy.empty()) {
-            cout << "  ";
-            copy.pop().display();
+        int rank = 1;
+        for (int i = 0; i < currentSize; ++i) {
+            if (heapArray[i] && !heapArray[i]->isAssigned && !heapArray[i]->isCancelled && !heapArray[i]->isExpired) {
+                double mins = heapArray[i]->getRemainingMinutes();
+                cout << "  [" << rank++ << "] Food #" << heapArray[i]->foodID
+                     << " - " << heapArray[i]->name
+                     << " (Remaining: " << heapArray[i]->getRemainingHours() << " hrs / "
+                     << mins << " mins)";
+                if (mins <= 30.0 && mins > 0.0) {
+                    cout << " *** CRITICAL: PICKUP REQUIRED WITHIN 30 MINS! ***";
+                }
+                cout << "\n";
+            }
         }
+        if (rank == 1) cout << "  (No active items in urgency radar)\n";
     }
 };
 
-// ================= CUSTOM HASH TABLE =================
-// Separate chaining: allergen -> linked list of food IDs.
-struct AllergyNode {
-    string allergen;
-    int foodId;
-    AllergyNode *next;
-
-    AllergyNode(const string &allergen, int foodId)
-        : allergen(allergen), foodId(foodId), next(nullptr) {}
-};
-
-class AllergyHashTable {
-private:
-    static const int TABLE_SIZE = 101;
-    AllergyNode *buckets[TABLE_SIZE];
-
-    int hashFunction(const string &key) const {
-        unsigned long hash = 5381;
-
-        for (unsigned char c : key)
-            hash = ((hash << 5) + hash) + c;
-
-        return static_cast<int>(hash % TABLE_SIZE);
-    }
+// ============================================================================
+// 6. OBJECT-ORIENTED ENTITY TAXONOMY
+// ============================================================================
+class User {
+protected:
+    int id;
+    string name;
+    string contact;
+    string address;
+    int penaltyPoints;
+    double penaltyFines;
 
 public:
-    AllergyHashTable() {
-        for (int i = 0; i < TABLE_SIZE; ++i)
-            buckets[i] = nullptr;
+    User(int id, string name, string contact, string addr, int pts = 0, double fines = 0.0)
+        : id(id), name(name), contact(contact), address(addr),
+          penaltyPoints(pts), penaltyFines(fines) {}
+
+    virtual ~User() = default;
+    int getId() const { return id; }
+    string getName() const { return name; }
+    string getContact() const { return contact; }
+    string getAddress() const { return address; }
+    int getPenaltyPoints() const { return penaltyPoints; }
+    double getPenaltyFines() const { return penaltyFines; }
+
+    void addPenalty(double fine) {
+        penaltyPoints++;
+        penaltyFines += fine;
     }
 
-    AllergyHashTable(const AllergyHashTable &) = delete;
-    AllergyHashTable &operator=(const AllergyHashTable &) = delete;
-
-    void insert(const string &allergen, int foodId) {
-        string key = toLower(trim(allergen));
-        if (key.empty() || key == "none")
-            return;
-
-        int index = hashFunction(key);
-
-        AllergyNode *current = buckets[index];
-        while (current) {
-            if (current->allergen == key && current->foodId == foodId)
-                return;
-            current = current->next;
-        }
-
-        AllergyNode *node = new AllergyNode(key, foodId);
-        node->next = buckets[index];
-        buckets[index] = node;
-    }
-
-    bool containsFood(const string &allergen, int foodId) const {
-        string key = toLower(trim(allergen));
-        int index = hashFunction(key);
-
-        AllergyNode *current = buckets[index];
-
-        while (current) {
-            if (current->allergen == key && current->foodId == foodId)
-                return true;
-            current = current->next;
-        }
-
-        return false;
-    }
-
-    void remove(const string &allergen, int foodId) {
-        string key = toLower(trim(allergen));
-        int index = hashFunction(key);
-
-        AllergyNode *current = buckets[index];
-        AllergyNode *previous = nullptr;
-
-        while (current) {
-            if (current->allergen == key && current->foodId == foodId) {
-                if (previous)
-                    previous->next = current->next;
-                else
-                    buckets[index] = current->next;
-
-                delete current;
-                return;
-            }
-
-            previous = current;
-            current = current->next;
-        }
-    }
-
-    void lookup(const string &allergen) const {
-        string key = toLower(trim(allergen));
-
-        if (key.empty() || key == "none") {
-            cout << "Please enter a valid allergen.\n";
-            return;
-        }
-
-        int index = hashFunction(key);
-        AllergyNode *current = buckets[index];
-        bool found = false;
-
-        cout << "\n--- Allergy Hash Table Lookup ---\n";
-        cout << "Allergen: " << key << "\n";
-        cout << "Food IDs: ";
-
-        while (current) {
-            if (current->allergen == key) {
-                cout << "#" << current->foodId << " ";
-                found = true;
-            }
-            current = current->next;
-        }
-
-        if (!found)
-            cout << "none";
-
-        cout << endl;
-    }
-
-    ~AllergyHashTable() {
-        for (int i = 0; i < TABLE_SIZE; ++i) {
-            AllergyNode *current = buckets[i];
-
-            while (current) {
-                AllergyNode *temp = current;
-                current = current->next;
-                delete temp;
-            }
-
-            buckets[i] = nullptr;
-        }
+    virtual void display() const {
+        cout << "User #" << id << ": " << name << " | Contact: " << contact
+             << " | Addr: " << address
+             << " | Penalties: " << penaltyPoints << " (Rs. " << penaltyFines << ")\n";
     }
 };
 
-// ================= MAIN SYSTEM =================
-class FoodSurplusManagementSystem {
+class Donor : public User {
 private:
-    vector<Donor> donors;
-    vector<NGO> ngos;
+    string donorType;
 
-    // Complete active inventory.
-    FoodNode *foodHead = nullptr;
+public:
+    Donor(int id, string name, string contact, string addr, string type, int pts = 0, double fines = 0.0)
+        : User(id, name, contact, addr, pts, fines), donorType(type) {}
 
-    // ONE GLOBAL custom min-heap.
-    FoodMinHeap foodMinHeap;
+    string getDonorType() const { return donorType; }
 
-    // Custom allergen hash table.
-    AllergyHashTable allergyHashTable;
+    void display() const override {
+        cout << "[Donor #" << id << "] " << name << " (" << donorType
+             << ") | Addr: " << address
+             << " | Ph: " << contact << " | Penalty Strikes: " << penaltyPoints << "\n";
+    }
+};
 
-    // FIFO request queue.
+class Recipient : public User {
+protected:
+    string acceptedDietType;
+
+public:
+    Recipient(int id, string name, string contact, string addr, string diet, int pts = 0, double fines = 0.0)
+        : User(id, name, contact, addr, pts, fines), acceptedDietType(toLower(trim(diet))) {}
+
+    string getAcceptedDietType() const { return acceptedDietType; }
+
+    virtual bool isCompatible(const FoodItem &food, string &rejectionReason) const = 0;
+};
+
+class NGO : public Recipient {
+public:
+    NGO(int id, string name, string contact, string addr, string diet, int pts = 0, double fines = 0.0)
+        : Recipient(id, name, contact, addr, diet, pts, fines) {}
+
+    bool isCompatible(const FoodItem &food, string &rejectionReason) const override {
+        if (acceptedDietType == "veg" && toLower(food.dietType) == "non-veg") {
+            rejectionReason = "Dietary mismatch (NGO requires strictly Vegetarian meals)";
+            return false;
+        }
+        return true;
+    }
+
+    void display() const override {
+        cout << "[NGO #" << id << "] " << name << " | Diet: " << acceptedDietType << "\n"
+             << "       Addr: " << address << "\n";
+    }
+};
+
+class AnimalShelter : public Recipient {
+private:
+    string species;
+
+public:
+    AnimalShelter(int id, string name, string contact, string addr, string spec, int pts = 0, double fines = 0.0)
+        : Recipient(id, name, contact, addr, "plain", pts, fines), species(spec) {}
+
+    string getSpecies() const { return species; }
+
+    bool isCompatible(const FoodItem &food, string &rejectionReason) const override {
+        if (toLower(food.dietType) != "plain") {
+            rejectionReason = "Animal Safety Violation: Cooked human food contains unsafe spices/oil";
+            return false;
+        }
+
+        string raw = toLower(food.ingredients);
+        vector<string> toxicList = {"onion", "garlic", "chocolate", "xylitol", "chili", "pepper", "raisin", "grape"};
+
+        for (const auto &tox : toxicList) {
+            if (raw.find(tox) != string::npos) {
+                rejectionReason = "TOXICITY ALERT: Contains " + tox + " which is lethal to animals!";
+                return false;
+            }
+        }
+        return true;
+    }
+
+    void display() const override {
+        cout << "[Animal Shelter #" << id << "] " << name << " (" << species
+             << ") | Addr: " << address << "\n";
+    }
+};
+
+// ============================================================================
+// 7. SYSTEM ORCHESTRATION ENGINE
+// ============================================================================
+class FoodRescueSystem {
+private:
+    HashTable allergenDictionary;
+    FoodInventoryList inventory;
+    MinHeapExpiryQueue urgencyHeap;
     queue<FoodRequest> requestQueue;
 
-    vector<string> history;
-
-    // Graph represented as donor -> NGO adjacency list.
-    map<int, vector<int>> donorToNgo;
+    vector<User*> userRegistry;
+    vector<Notification> notifications;
+    vector<OrderTransaction> orderHistory;
 
     int nextUserId = 1;
     int nextFoodId = 1;
     int nextRequestId = 1;
+    int nextOrderId = 1;
 
-    void addToFoodInventory(const FoodItem &item) {
-        FoodNode *node = new FoodNode(item);
-
-        if (!foodHead) {
-            foodHead = node;
-            return;
-        }
-
-        FoodNode *current = foodHead;
-        while (current->next)
-            current = current->next;
-
-        current->next = node;
-    }
-
-    bool removeFromFoodInventory(int foodId, FoodItem &removed) {
-        FoodNode *current = foodHead;
-        FoodNode *previous = nullptr;
-
-        while (current) {
-            if (current->item.id == foodId) {
-                removed = current->item;
-
-                if (previous)
-                    previous->next = current->next;
-                else
-                    foodHead = current->next;
-
-                delete current;
-                return true;
-            }
-
-            previous = current;
-            current = current->next;
-        }
-
-        return false;
-    }
-
-    void addToAllergyHash(const FoodItem &item) {
-        for (const string &allergen : splitTokens(item.allergens))
-            allergyHashTable.insert(allergen, item.id);
-    }
-
-    void removeFromAllergyHash(const FoodItem &item) {
-        for (const string &allergen : splitTokens(item.allergens))
-            allergyHashTable.remove(allergen, item.id);
-    }
-
-    NGO *findNgoById(int ngoId) {
-        for (auto &ngo : ngos)
-            if (ngo.getId() == ngoId)
-                return &ngo;
-
-        return nullptr;
-    }
-
-    bool meetsFoodRequirement(const FoodItem &food,
-                              const NGO &ngo) const {
-        vector<string> requirements =
-            splitTokens(ngo.getRequirements());
-
-        if (requirements.empty())
-            return true;
-
-        string foodName = toLower(trim(food.foodName));
-
-        for (const string &required : requirements) {
-            if (foodName == required)
-                return true;
-        }
-
-        return false;
-    }
-
-    bool meetsDietaryPreference(const FoodItem &food,
-                                const NGO &ngo) const {
-        string preference =
-            toLower(trim(ngo.getDietaryPreference()));
-
-        if (preference.empty() || preference == "any")
-            return true;
-
-        if (preference == "veg" ||
-            preference == "vegetarian")
-            return food.foodType == "Veg";
-
-        if (preference == "non-veg" ||
-            preference == "nonveg" ||
-            preference == "non vegetarian" ||
-            preference == "non-vegetarian")
-            return food.foodType == "Non-Veg";
-
-        return false;
-    }
-
-    // Uses the CUSTOM HASH TABLE for the actual allergy gate.
-    bool isAllergySafe(const FoodItem &food,
-                       const NGO &ngo) const {
-        vector<string> restrictions =
-            splitTokens(ngo.getAllergyRestrictions());
-
-        for (const string &restricted : restrictions) {
-            if (allergyHashTable.containsFood(restricted, food.id))
-                return false;
-        }
-
-        return true;
-    }
-
-    bool suitable(const FoodItem &food, const NGO &ngo,
-                  const string &requestedFood) const {
-        if (toLower(trim(food.foodName)) !=
-            toLower(trim(requestedFood)))
-            return false;
-
-        if (!meetsFoodRequirement(food, ngo))
-            return false;
-
-        if (!meetsDietaryPreference(food, ngo))
-            return false;
-
-        if (!isAllergySafe(food, ngo))
-            return false;
-
-        return true;
-    }
-
-    bool tryMatch(const FoodRequest &request) {
-        NGO *ngo = findNgoById(request.ngoId);
-
-        if (!ngo) {
-            cout << "MATCH REJECTED: NGO #"
-                 << request.ngoId
-                 << " is not registered.\n";
-            return false;
-        }
-
-        string requestedFood = trim(request.foodName);
-
-        if (requestedFood.empty()) {
-            cout << "MATCH REJECTED: Food name is empty.\n";
-            return false;
-        }
-
-        // Global heap: inspect items in expiry order.
-        FoodMinHeap temporary;
-        FoodItem matched{};
-        bool found = false;
-
-        while (!foodMinHeap.empty()) {
-            FoodItem candidate = foodMinHeap.pop();
-
-            if (!found &&
-                suitable(candidate, *ngo, requestedFood)) {
-                matched = candidate;
-                found = true;
-
-                // Do NOT put matched food back.
-                break;
-            }
-
-            temporary.push(candidate);
-        }
-
-        // Restore every active item that was not matched.
-        while (!temporary.empty())
-            foodMinHeap.push(temporary.pop());
-
-        if (!found) {
-            cout << "No suitable food found for NGO#"
-                 << request.ngoId
-                 << ". Request remains pending.\n";
-            return false;
-        }
-
-        // Remove matched food from linked-list inventory.
-        FoodItem removed;
-        if (!removeFromFoodInventory(matched.id, removed)) {
-            // Roll back heap state if inventory is inconsistent.
-            foodMinHeap.push(matched);
-            cout << "ERROR: Inventory inconsistency. Match cancelled.\n";
-            return false;
-        }
-
-        // Remove matched food from custom allergen hash.
-        removeFromAllergyHash(matched);
-
-        cout << "\nMATCHED: " << matched.foodName
-             << " [" << matched.foodType << "]"
-             << " (Food#" << matched.id
-             << ", Donor#" << matched.donorId
-             << ") -> NGO#" << request.ngoId << endl;
-
-        cout << "PICKUP ADDRESS: "
-             << matched.pickupAddress << endl;
-
-        donorToNgo[matched.donorId].push_back(request.ngoId);
-
-        history.push_back(
-            "Donor#" + to_string(matched.donorId) +
-            " -> NGO#" + to_string(request.ngoId) +
-            " (" + matched.foodName + ", " +
-            matched.foodType + ") | Pickup: " +
-            matched.pickupAddress
-        );
-
-        return true;
-    }
-
-    void clearFoodInventory() {
-        while (foodHead) {
-            FoodNode *temp = foodHead;
-            foodHead = foodHead->next;
-            delete temp;
-        }
+    void seedAllergenDictionary() {
+        allergenDictionary.insert("milk", "Dairy");
+        allergenDictionary.insert("milk solids", "Dairy");
+        allergenDictionary.insert("cheese", "Dairy");
+        allergenDictionary.insert("yogurt", "Dairy");
+        allergenDictionary.insert("butter", "Dairy");
+        allergenDictionary.insert("paneer", "Dairy");
+        allergenDictionary.insert("cashew", "Tree Nuts");
+        allergenDictionary.insert("almond", "Tree Nuts");
+        allergenDictionary.insert("walnut", "Tree Nuts");
+        allergenDictionary.insert("peanut", "Peanuts");
+        allergenDictionary.insert("peanuts", "Peanuts");
+        allergenDictionary.insert("peanut butter", "Peanuts");
+        allergenDictionary.insert("wheat", "Gluten");
+        allergenDictionary.insert("maida", "Gluten");
+        allergenDictionary.insert("semolina", "Gluten");
+        allergenDictionary.insert("bread", "Gluten");
+        allergenDictionary.insert("egg", "Egg");
+        allergenDictionary.insert("soy", "Soy");
+        allergenDictionary.insert("soy sauce", "Soy");
+        allergenDictionary.insert("tofu", "Soy");
     }
 
 public:
-    FoodSurplusManagementSystem() = default;
+    FoodRescueSystem() {
+        seedAllergenDictionary();
+        loadFromDisk();
+        autoPurgeExpiredFood();
+    }
 
-    FoodSurplusManagementSystem(
-        const FoodSurplusManagementSystem &) = delete;
+    ~FoodRescueSystem() {
+        autoPurgeExpiredFood();
+        saveToDisk();
+        for (User *u : userRegistry) delete u;
+    }
 
-    FoodSurplusManagementSystem &operator=(
-        const FoodSurplusManagementSystem &) = delete;
-
-    bool donorExists(int donorId) const {
-        for (const auto &donor : donors)
-            if (donor.getId() == donorId)
-                return true;
-
+    bool isPhoneRegistered(const string &phone) const {
+        for (User *u : userRegistry) {
+            if (u->getContact() == phone) return true;
+        }
         return false;
     }
 
-    bool ngoExists(int ngoId) const {
-        for (const auto &ngo : ngos)
-            if (ngo.getId() == ngoId)
-                return true;
-        return false;
+    void autoPurgeExpiredFood() {
+        inventory.forEach([&](FoodItem &item) {
+            if (!item.isAssigned && !item.isCancelled && !item.isExpired) {
+                if (item.getRemainingMinutes() <= 0.0) {
+                    item.isExpired = true;
+                    string alertMsg = "[AUTOMATIC EXPIRY NOTICE] Donation Food #" +
+                                      to_string(item.foodID) + " (" + item.name +
+                                      ") expired without recipient requests. Automatically marked EXPIRED and removed from donation radar.";
+                    addNotification(item.donorID, alertMsg);
+                }
+            }
+        });
     }
 
-    int registerDonor(const string &name,
-                      const string &address) {
-        string cleanName = trim(name);
-        string cleanAddress = trim(address);
+    User* findUser(int id) const {
+        for (User *u : userRegistry) {
+            if (u->getId() == id) return u;
+        }
+        return nullptr;
+    }
 
-        if (cleanName.empty() || cleanAddress.empty()) {
-            cout << "Error: Donor name/address cannot be empty.\n";
+    Recipient* findRecipient(int id) const {
+        User *u = findUser(id);
+        return dynamic_cast<Recipient*>(u);
+    }
+
+    Donor* findDonor(int id) const {
+        User *u = findUser(id);
+        return dynamic_cast<Donor*>(u);
+    }
+
+    bool userExists(int id) const { return findUser(id) != nullptr; }
+    bool recipientExists(int id) const { return findRecipient(id) != nullptr; }
+
+    void addNotification(int uId, const string &msg) {
+        notifications.push_back({uId, msg, getCurrentEpochSeconds()});
+    }
+
+    int registerDonor(string name, string contact, string addr, string type) {
+        Donor *d = new Donor(nextUserId++, name, contact, addr, type);
+        userRegistry.push_back(d);
+        return d->getId();
+    }
+
+    int registerNGO(string name, string contact, string addr, string diet) {
+        NGO *n = new NGO(nextUserId++, name, contact, addr, diet);
+        userRegistry.push_back(n);
+        return n->getId();
+    }
+
+    int registerAnimalShelter(string name, string contact, string addr, string species) {
+        AnimalShelter *a = new AnimalShelter(nextUserId++, name, contact, addr, species);
+        userRegistry.push_back(a);
+        return a->getId();
+    }
+
+    int donateFood(int donorId, string name, string category, int qty, int bestBeforeHrs,
+                   string dietType, string ingredients, string spice, string extraNotes) {
+        autoPurgeExpiredFood();
+
+        User *u = findUser(donorId);
+        if (!u) {
+            cout << "[Error] Donor/Entity #" << donorId << " is not registered.\n";
             return -1;
         }
 
-        donors.emplace_back(
-            nextUserId, cleanName, cleanAddress
-        );
+        string identifiedAllergens = allergenDictionary.mapIngredientsToAllergens(ingredients);
 
-        return nextUserId++;
+        long long prepTime = getCurrentEpochSeconds();
+        long long expiryTime = prepTime + (bestBeforeHrs * 3600LL);
+
+        FoodItem item(nextFoodId++, name, category, qty, prepTime, expiryTime,
+                      bestBeforeHrs, dietType, ingredients, identifiedAllergens,
+                      spice, extraNotes, donorId, u->getAddress());
+
+        FoodItem* storedPtr = inventory.insert(item);
+        urgencyHeap.insert(storedPtr);
+
+        cout << "\n>>> Item added for donation successfully.\n";
+
+        if (storedPtr->getRemainingMinutes() <= 30.0) {
+            cout << ">>> [URGENT WINDOW ALERT] Food has 30 mins or less remaining! Flagged for quick pickup.\n";
+        }
+
+        addNotification(donorId, "Food #" + to_string(storedPtr->foodID) + " (" + name + ") successfully logged for donation.");
+
+        processMatchingPipeline();
+
+        return storedPtr->foodID;
     }
 
-    int registerNGO(const string &name,
-                    const string &requirements,
-                    const string &dietaryPreference,
-                    const string &allergyRestrictions) {
-        string cleanName = trim(name);
-        string diet = toLower(trim(dietaryPreference));
-        string normalizedDiet;
+    int requestFood(int recipientId, string foodName, int qty, string allergies) {
+        autoPurgeExpiredFood();
 
-        if (cleanName.empty()) {
-            cout << "Error: NGO name cannot be empty.\n";
+        Recipient *r = findRecipient(recipientId);
+        if (!r) {
+            cout << "[Error] Recipient #" << recipientId << " not found in registry.\n";
             return -1;
         }
 
-        if (diet != "any" &&
-            diet != "veg" &&
-            diet != "non-veg" &&
-            diet != "nonveg") {
-            cout << "Error: Dietary preference must be "
-                    "Any, Veg, or Non-Veg.\n";
-            return -1;
-        }
+        FoodRequest req{nextRequestId++, recipientId, foodName, qty, allergies, "Pending", getCurrentEpochSeconds()};
+        requestQueue.push(req);
+        cout << "\n>>> Request #" << req.requestID << " placed into queue.\n";
+        addNotification(recipientId, "Request #" + to_string(req.requestID) + " for " + foodName + " placed into queue.");
 
-        if (diet == "nonveg")
-            normalizedDiet = "Non-Veg";
-        else if (diet == "veg")
-            normalizedDiet = "Veg";
-        else
-            normalizedDiet = "Any";
+        processMatchingPipeline();
 
-        ngos.emplace_back(
-            nextUserId,
-            cleanName,
-            trim(requirements),
-            normalizedDiet,
-            trim(allergyRestrictions)
-        );
-
-        return nextUserId++;
+        return req.requestID;
     }
 
-    bool donateFood(int donorId,
-                    const string &foodName,
-                    int expiryDays,
-                    const string &allergens,
-                    const string &foodType) {
-        if (!donorExists(donorId)) {
-            cout << "Error: Donor #" << donorId
-                 << " is not registered. Donation rejected.\n";
+    bool cancelDonation(int foodId, int donorId) {
+        autoPurgeExpiredFood();
+        FoodItem *item = inventory.findById(foodId);
+        if (!item) {
+            cout << "[Error] Food item not found.\n";
             return false;
         }
-
-        string cleanFood = trim(foodName);
-
-        if (cleanFood.empty()) {
-            cout << "Error: Food name cannot be empty.\n";
+        if (item->donorID != donorId) {
+            cout << "[Error] You do not own this donation.\n";
             return false;
         }
-
-        if (expiryDays < 0) {
-            cout << "Error: Expiry days cannot be negative.\n";
+        if (item->isAssigned) {
+            cout << "[Error] Cancellation window closed: Food has already been matched or dispatched.\n";
             return false;
         }
-
-        if (foodType != "Veg" &&
-            foodType != "Non-Veg") {
-            cout << "Error: Food type must be Veg or Non-Veg.\n";
+        if (item->isExpired) {
+            cout << "[Error] Item has already expired.\n";
             return false;
         }
+        item->isCancelled = true;
+        addNotification(donorId, "Donation of Food #" + to_string(foodId) + " was cancelled successfully.");
+        cout << ">>> Food donation cancelled successfully.\n";
+        return true;
+    }
 
-        string pickupAddress;
+    // ========================================================================
+    // ADVANCED SMART MATCHING ENGINE
+    // ========================================================================
+    void processMatchingPipeline() {
+        autoPurgeExpiredFood();
 
-        for (const auto &donor : donors) {
-            if (donor.getId() == donorId) {
-                pickupAddress = donor.getAddress();
-                break;
+        if (requestQueue.empty()) return;
+
+        vector<FoodRequest> pendingRequests;
+        while (!requestQueue.empty()) {
+            pendingRequests.push_back(requestQueue.front());
+            requestQueue.pop();
+        }
+
+        for (size_t rIdx = 0; rIdx < pendingRequests.size(); ++rIdx) {
+            FoodRequest &req = pendingRequests[rIdx];
+            if (req.status != "Pending" || req.requestedQuantity <= 0) continue;
+
+            Recipient *rec = findRecipient(req.recipientID);
+            if (!rec) continue;
+
+            vector<FoodItem*> compatibleLots;
+            int totalAvailableQty = 0;
+
+            inventory.forEach([&](FoodItem &food) {
+                if (food.isAssigned || food.isCancelled || food.isExpired || food.getRemainingMinutes() <= 0.0) return;
+                if (food.donorID == rec->getId()) return;
+
+                if (toLower(food.name).find(toLower(req.foodName)) != string::npos ||
+                    toLower(req.foodName).find(toLower(food.name)) != string::npos) {
+
+                    string reason;
+                    if (rec->isCompatible(food, reason)) {
+                        bool allergenConflict = false;
+                        if (!req.allergyRestrictions.empty()) {
+                            vector<string> restricted = splitTokens(req.allergyRestrictions);
+                            vector<string> present = splitTokens(food.allergens);
+                            for (const auto &p : present) {
+                                for (const auto &rst : restricted) {
+                                    if (p == rst || p == rst + "s" || rst == p + "s") {
+                                        allergenConflict = true;
+                                        break;
+                                    }
+                                }
+                                if (allergenConflict) break;
+                            }
+                        }
+
+                        if (!allergenConflict) {
+                            compatibleLots.push_back(&food);
+                            totalAvailableQty += food.quantity;
+                        }
+                    }
+                }
+            });
+
+            if (compatibleLots.empty()) continue;
+
+            // Case A: Total available food is LESS than requested quantity
+            if (totalAvailableQty < req.requestedQuantity) {
+                cout << "\n======================================================\n";
+                cout << "QUANTITY NOTICE FOR RECIPIENT #" << rec->getId() << " (" << rec->getName() << ")\n";
+                cout << "Requested Dish: " << req.foodName << "\n";
+                cout << "Requested Quantity: " << req.requestedQuantity << " servings\n";
+                cout << "Total Currently Available: " << totalAvailableQty << " servings\n";
+                cout << "Are you willing to confirm the order for the available " << totalAvailableQty << " servings?\n";
+                cout << "  1. Yes (Accept Partial Order)\n";
+                cout << "  2. No (Wait for full quantity)\n";
+                int userDecision = readMenuChoice("Enter choice (1-2): ", 1, 2);
+
+                if (userDecision == 2) {
+                    cout << ">>> Order remains in queue awaiting additional surplus.\n";
+                    cout << "======================================================\n";
+                    continue;
+                }
+
+                req.requestedQuantity -= totalAvailableQty;
+                if (req.requestedQuantity == 0) req.status = "Matched";
+
+                for (FoodItem *foodPtr : compatibleLots) {
+                    foodPtr->isAssigned = true;
+                    double deliveryCost = 30.0;
+
+                    int currentOrderId = nextOrderId++;
+                    cout << "\nOrder ID: " << currentOrderId << "\n";
+                    cout << "Food ID: " << foodPtr->foodID << "\n";
+                    cout << "Dispatched: [" << foodPtr->name << "] ("
+                         << foodPtr->quantity << " servings) to " << rec->getName() << "\n";
+                    cout << "Donor Address: " << foodPtr->donorAddress << "\n";
+                    cout << "Standard Delivery Fee: Rs. " << deliveryCost << "\n";
+
+                    addNotification(foodPtr->donorID, "Order #" + to_string(currentOrderId) + ": Food #" + to_string(foodPtr->foodID) +
+                                    " matched to " + rec->getName() + ". Please prepare for pickup.");
+                    addNotification(rec->getId(), "Order #" + to_string(currentOrderId) + ": " + to_string(foodPtr->quantity) + " servings of " +
+                                    foodPtr->name + " from Donor #" + to_string(foodPtr->donorID) + " at " + foodPtr->donorAddress + " is dispatched.");
+
+                    orderHistory.emplace_back(currentOrderId, foodPtr->foodID, foodPtr->donorID, rec->getId(),
+                                              foodPtr->quantity, deliveryCost, "Dispatched");
+                }
+                cout << "======================================================\n";
+            }
+            // Case B: Available food is EQUAL TO OR GREATER than requested quantity
+            else {
+                int needed = req.requestedQuantity;
+                vector<pair<FoodItem*, int>> matchedAllocations;
+
+                for (FoodItem *foodPtr : compatibleLots) {
+                    if (needed <= 0) break;
+                    int take = min(foodPtr->quantity, needed);
+                    matchedAllocations.push_back({foodPtr, take});
+                    needed -= take;
+                }
+
+                req.status = "Matched";
+                req.requestedQuantity = 0;
+
+                cout << "\n======================================================\n";
+                for (auto &alloc : matchedAllocations) {
+                    FoodItem *foodPtr = alloc.first;
+                    int allocatedQty = alloc.second;
+
+                    if (foodPtr->quantity == allocatedQty) {
+                        foodPtr->isAssigned = true;
+                    } else {
+                        foodPtr->quantity -= allocatedQty;
+                    }
+
+                    double deliveryCost = 30.0;
+                    int currentOrderId = nextOrderId++;
+                    cout << "Order ID: " << currentOrderId << "\n";
+                    cout << "Food ID: " << foodPtr->foodID << "\n";
+                    cout << "Dispatched: [" << foodPtr->name << "] ("
+                         << allocatedQty << " servings) to " << rec->getName() << "\n";
+                    cout << "Donor Address: " << foodPtr->donorAddress << "\n";
+                    cout << "Delivery Fee: Rs. " << deliveryCost << "\n\n";
+
+                    addNotification(foodPtr->donorID, "Order #" + to_string(currentOrderId) + ": Food #" + to_string(foodPtr->foodID) +
+                                    " (" + to_string(allocatedQty) + " servings) matched to " + rec->getName() + ".");
+                    addNotification(rec->getId(), "Order #" + to_string(currentOrderId) + ": " + to_string(allocatedQty) + " servings of " +
+                                    foodPtr->name + " from Donor #" + to_string(foodPtr->donorID) + " at " + foodPtr->donorAddress + " dispatched.");
+
+                    orderHistory.emplace_back(currentOrderId, foodPtr->foodID, foodPtr->donorID, rec->getId(),
+                                              allocatedQty, deliveryCost, "Dispatched");
+                }
+                cout << "======================================================\n";
             }
         }
 
-        FoodItem item{
-            nextFoodId++,
-            donorId,
-            expiryDays,
-            cleanFood,
-            trim(allergens),
-            foodType,
-            pickupAddress
-        };
-
-        addToFoodInventory(item);
-        foodMinHeap.push(item);
-        addToAllergyHash(item);
-
-        cout << "-> Added to Linked List inventory.\n";
-        cout << "-> Added to GLOBAL expiry Min-Heap.\n";
-        cout << "-> Added to CUSTOM allergy Hash Table.\n";
-        cout << "-> Pickup Address: "
-             << pickupAddress << endl;
-
-        return true;
+        for (const auto &r : pendingRequests) {
+            if (r.status == "Pending" && r.requestedQuantity > 0) {
+                requestQueue.push(r);
+            }
+        }
     }
 
-    bool requestFood(int ngoId,
-                     const string &foodName) {
-        if (!ngoExists(ngoId)) {
-            cout << "Error: NGO #" << ngoId
-                 << " is not registered. Request rejected.\n";
-            return false;
+    void confirmDelivery(int orderId, int userId, bool isDonor) {
+        for (auto &ord : orderHistory) {
+            if (ord.orderID == orderId) {
+                if (isDonor && ord.donorID == userId) {
+                    ord.donorConfirmed = true;
+                    cout << ">>> Donor delivery dispatch confirmed.\n";
+                } else if (!isDonor && ord.recipientID == userId) {
+                    ord.recipientConfirmed = true;
+                    cout << ">>> Recipient order receipt confirmed.\n";
+                } else {
+                    cout << "[Error] User ID does not match order record.\n";
+                    return;
+                }
+
+                if (ord.donorConfirmed && ord.recipientConfirmed) {
+                    ord.status = "Delivered/Fulfilled";
+                    cout << ">>> SUCCESS: Two-Way Delivery Handshake Completed. Order fully closed.\n";
+                    addNotification(ord.donorID, "Order #" + to_string(orderId) + " marked delivered by recipient.");
+                    addNotification(ord.recipientID, "Order #" + to_string(orderId) + " receipt finalized.");
+                }
+                return;
+            }
         }
-
-        string cleanFood = trim(foodName);
-
-        if (cleanFood.empty()) {
-            cout << "Error: Requested food name cannot be empty.\n";
-            return false;
-        }
-
-        requestQueue.push(
-            {nextRequestId++, ngoId, cleanFood}
-        );
-
-        cout << "-> Request added to FIFO queue.\n";
-        return true;
+        cout << "[Error] Order ID not found.\n";
     }
 
-    void matchAll() {
-        if (requestQueue.empty()) {
-            cout << "No pending requests.\n";
+    void fileSpoiledFoodComplaint(int orderId, int recipientId, const string &details) {
+        for (auto &ord : orderHistory) {
+            if (ord.orderID == orderId) {
+                if (ord.recipientID != recipientId) {
+                    cout << "[Error] You are not the recipient of this order.\n";
+                    return;
+                }
+                if (ord.isSpoiledComplaint) {
+                    cout << "[Error] Complaint already registered for this order.\n";
+                    return;
+                }
+
+                ord.isSpoiledComplaint = true;
+                ord.status = "Complaint: Spoiled Food";
+
+                User *donor = findUser(ord.donorID);
+                if (donor) {
+                    donor->addPenalty(250.0);
+                    cout << "\n>>> COMPLAINT RECORDED: Food was found spoilt.\n";
+                    cout << ">>> PENALTY IMPOSED: Donor #" << donor->getId() << " penalized Rs. 250 and received 1 strike.\n";
+                    cout << ">>> Reason: " << details << "\n";
+
+                    addNotification(donor->getId(), "PENALTY NOTICE: Order #" + to_string(orderId) +
+                                    " was reported SPOILED. Rs. 250 fine and 1 penalty strike applied.");
+                    addNotification(recipientId, "Your spoiled food complaint for Order #" + to_string(orderId) + " has been processed.");
+                }
+                return;
+            }
+        }
+        cout << "[Error] Order ID not found.\n";
+    }
+
+    void displayUserNotifications(int userId) const {
+        cout << "\n--- NOTIFICATIONS FOR USER #" << userId << " ---\n";
+        bool hasAny = false;
+        for (const auto &n : notifications) {
+            if (n.userId == userId) {
+                cout << "  * " << n.message << "\n";
+                hasAny = true;
+            }
+        }
+        if (!hasAny) cout << "  (No notifications)\n";
+    }
+
+    void displayOrderTransactions() const {
+        cout << "\n--- ORDER TRANSACTIONS & DISPATCH STATUS ---\n";
+        if (orderHistory.empty()) {
+            cout << "  (No orders recorded)\n";
             return;
         }
+        for (const auto &o : orderHistory) {
+            cout << "Order #" << o.orderID << " | Food #" << o.foodID << " | Donor #" << o.donorID
+                 << " -> Recipient #" << o.recipientID << " | Qty: " << o.quantity
+                 << " | Status: " << o.status
+                 << " [Donor Confirmed: " << (o.donorConfirmed ? "Yes" : "No")
+                 << " | Recipient Confirmed: " << (o.recipientConfirmed ? "Yes" : "No") << "]\n";
+        }
+    }
 
-        bool progress = true;
-
-        while (progress && !requestQueue.empty()) {
-            progress = false;
-
-            int rounds =
-                static_cast<int>(requestQueue.size());
-
-            for (int i = 0; i < rounds; ++i) {
-                FoodRequest request =
-                    requestQueue.front();
-
-                requestQueue.pop();
-
-                if (tryMatch(request)) {
-                    progress = true;
-                } else {
-                    requestQueue.push(request);
+    void saveToDisk() {
+        ofstream uout("users.dat");
+        if (uout) {
+            uout << userRegistry.size() << "\n";
+            for (User *u : userRegistry) {
+                if (Donor *d = dynamic_cast<Donor*>(u)) {
+                    uout << "DONOR\n" << d->getId() << "\n" << d->getName() << "\n"
+                         << d->getContact() << "\n" << d->getAddress() << "\n"
+                         << d->getDonorType() << "\n"
+                         << d->getPenaltyPoints() << "\n" << d->getPenaltyFines() << "\n";
+                } else if (NGO *n = dynamic_cast<NGO*>(u)) {
+                    uout << "NGO\n" << n->getId() << "\n" << n->getName() << "\n"
+                         << n->getContact() << "\n" << n->getAddress() << "\n"
+                         << n->getAcceptedDietType() << "\n"
+                         << n->getPenaltyPoints() << "\n" << n->getPenaltyFines() << "\n";
+                } else if (AnimalShelter *a = dynamic_cast<AnimalShelter*>(u)) {
+                    uout << "SHELTER\n" << a->getId() << "\n" << a->getName() << "\n"
+                         << a->getContact() << "\n" << a->getAddress() << "\n"
+                         << a->getSpecies() << "\n"
+                         << a->getPenaltyPoints() << "\n" << a->getPenaltyFines() << "\n";
                 }
             }
         }
+    }
 
-        if (!requestQueue.empty()) {
-            cout << "\nSome requests remain pending because "
-                    "no suitable food is currently available.\n";
+    void loadFromDisk() {
+        ifstream uin("users.dat");
+        if (!uin) return;
+        int count;
+        if (uin >> count) {
+            uin.ignore(numeric_limits<streamsize>::max(), '\n');
+            for (int i = 0; i < count; ++i) {
+                string role;
+                getline(uin, role);
+                role = trim(role);
+
+                int id;
+                string name, contact, addr;
+
+                uin >> id;
+                uin.ignore(numeric_limits<streamsize>::max(), '\n');
+                getline(uin, name);
+                getline(uin, contact);
+                getline(uin, addr);
+
+                if (role == "DONOR") {
+                    string type;
+                    int pts; double fines;
+                    getline(uin, type);
+                    uin >> pts >> fines;
+                    uin.ignore(numeric_limits<streamsize>::max(), '\n');
+                    userRegistry.push_back(new Donor(id, name, contact, addr, type, pts, fines));
+                } else if (role == "NGO") {
+                    string diet;
+                    int pts; double fines;
+                    getline(uin, diet);
+                    uin >> pts >> fines;
+                    uin.ignore(numeric_limits<streamsize>::max(), '\n');
+                    userRegistry.push_back(new NGO(id, name, contact, addr, diet, pts, fines));
+                } else if (role == "SHELTER") {
+                    int pts; double fines;
+                    string species;
+                    getline(uin, species);
+                    uin >> pts >> fines;
+                    uin.ignore(numeric_limits<streamsize>::max(), '\n');
+                    userRegistry.push_back(new AnimalShelter(id, name, contact, addr, species, pts, fines));
+                }
+                if (id >= nextUserId) nextUserId = id + 1;
+            }
         }
     }
 
-    void showAllDonors() const {
-        cout << "\n--- Donors ---\n";
+    void adminDisplayInventory() {
+        autoPurgeExpiredFood();
+        cout << "\n--- Master Food Inventory (Custom Singly Linked List) ---\n";
+        inventory.displayAll();
+    }
 
-        if (donors.empty()) {
-            cout << "  (none registered yet)\n";
+    void adminDisplayUrgencyHeap() {
+        autoPurgeExpiredFood();
+        cout << "\n--- Expiry Urgency Radar (Custom Binary Min-Heap) ---\n";
+        urgencyHeap.displayHeap();
+    }
+
+    void adminDisplayRequestQueue() {
+        autoPurgeExpiredFood();
+        cout << "\n--- Recipient FIFO Request Pipeline (std::queue) ---\n";
+        if (requestQueue.empty()) {
+            cout << "  (Request Queue is empty)\n";
             return;
         }
-
-        for (const auto &donor : donors)
-            donor.display();
+        int sz = static_cast<int>(requestQueue.size());
+        for (int i = 0; i < sz; ++i) {
+            FoodRequest req = requestQueue.front();
+            requestQueue.pop();
+            cout << "  Request #" << req.requestID << " for \"" << req.foodName
+                 << "\" (" << req.requestedQuantity << " servings) by Recipient #"
+                 << req.recipientID << " [Status: " << req.status << "]\n";
+            requestQueue.push(req);
+        }
     }
 
-    void showAllNGOs() const {
-        cout << "\n--- NGOs / Recipients ---\n";
-
-        if (ngos.empty()) {
-            cout << "  (none registered yet)\n";
+    void adminDisplayUsers() const {
+        cout << "\n--- Registered Ecosystem Entities ---\n";
+        if (userRegistry.empty()) {
+            cout << "  (No registered users)\n";
             return;
         }
-
-        for (const auto &ngo : ngos)
-            ngo.display();
-    }
-
-    void showFoodInventory() const {
-        cout << "\n--- Food Inventory (Linked List) ---\n";
-
-        if (!foodHead) {
-            cout << "  (empty)\n";
-            return;
-        }
-
-        FoodNode *current = foodHead;
-
-        while (current) {
-            cout << "  ";
-            current->item.display();
-            current = current->next;
-        }
-    }
-
-    void showFoodHeap() const {
-        cout << "\n--- GLOBAL Food Min-Heap (Expiry Priority) ---\n";
-        foodMinHeap.display();
-    }
-
-    void showRequestQueue() const {
-        cout << "\n--- NGO Request Queue (FIFO) ---\n";
-
-        queue<FoodRequest> copy = requestQueue;
-
-        if (copy.empty()) {
-            cout << "  (empty)\n";
-            return;
-        }
-
-        while (!copy.empty()) {
-            copy.front().display();
-            copy.pop();
-        }
-    }
-
-    void lookupAllergy(const string &allergen) const {
-        allergyHashTable.lookup(allergen);
-    }
-
-    void showGraph() const {
-        cout << "\n--- Donor -> NGO Graph ---\n";
-
-        if (donorToNgo.empty()) {
-            cout << "  (no matches yet)\n";
-            return;
-        }
-
-        for (const auto &entry : donorToNgo) {
-            cout << "  Donor#" << entry.first
-                 << " helped NGO(s): ";
-
-            for (int ngoId : entry.second)
-                cout << "#" << ngoId << " ";
-
-            cout << endl;
-        }
-    }
-
-    void showHistory() const {
-        cout << "\n--- Distribution History ---\n";
-
-        if (history.empty()) {
-            cout << "  (none yet)\n";
-            return;
-        }
-
-        for (const string &line : history)
-            cout << "  " << line << endl;
-    }
-
-    ~FoodSurplusManagementSystem() {
-        clearFoodInventory();
+        for (User *u : userRegistry) u->display();
     }
 };
 
-// ================= MAIN =================
+// ============================================================================
+// PHONE NUMBER VALIDATION HELPER (10 DIGITS & UNIQUE)
+// ============================================================================
+string readValidPhoneNumber(const string &prompt, const FoodRescueSystem &system) {
+    while (true) {
+        string phone = readNonEmptyLine(prompt);
+
+        bool allDigits = (phone.length() == 10);
+        if (allDigits) {
+            for (char c : phone) {
+                if (!isdigit(static_cast<unsigned char>(c))) {
+                    allDigits = false;
+                    break;
+                }
+            }
+        }
+
+        if (!allDigits) {
+            cout << "[Error] Phone number must contain exactly 10 digits (0-9). Try again.\n";
+            continue;
+        }
+
+        if (system.isPhoneRegistered(phone)) {
+            cout << "[Error] This phone number is already registered in the system. Use another phone number.\n";
+            continue;
+        }
+
+        return phone;
+    }
+}
+
+// ============================================================================
+// 8. INTERACTIVE SYSTEM CONTROLLER
+// ============================================================================
 int main() {
-    FoodSurplusManagementSystem system;
+    FoodRescueSystem system;
     int choice;
 
     do {
-        cout << "\n===== FOOD SURPLUS MANAGEMENT SYSTEM (Phase 2) =====\n"
+        cout << "\n=======================================================\n"
+             << "   FOODRESCUE: SMART SURPLUS MANAGEMENT SYSTEM        \n"
+             << "=======================================================\n"
              << "1. Register Donor\n"
-             << "2. Donate Food\n"
-             << "3. Register NGO / Recipient\n"
-             << "4. Request Food\n"
-             << "5. Match All Pending Requests\n"
-             << "6. Show Food Inventory (Linked List)\n"
-             << "7. Show GLOBAL Food Min-Heap\n"
-             << "8. Show Request Queue (FIFO)\n"
-             << "9. Show Donor-NGO Graph\n"
-             << "10. Show Distribution History\n"
-             << "11. Allergy Lookup (Custom Hash Table)\n"
-             << "12. Show All Donors\n"
-             << "13. Show All NGOs / Recipients\n"
-             << "0. Exit\n";
+             << "2. Register Recipient (NGO)\n"
+             << "3. Register Animal Shelter\n"
+             << "4. Donate Food Surplus\n"
+             << "5. Submit Food Request\n"
+             << "6. Cancel Active Food Donation\n"
+             << "7. Two-Way Delivery Confirmation\n"
+             << "8. File Spoiled Food Complaint\n"
+             << "9. View Notifications and Inbox\n"
+             << "10. View Order Tracking Ledger\n"
+             << "0. Exit and Save\n";
 
-        choice = readInt("Choice: ");
-
-        string name, address, food, allergens;
-        string requirements, dietaryPreference, foodType;
-        int id, days;
+        choice = readMenuChoice("Choice: ", 0, 10);
 
         switch (choice) {
-        case 1: {
-            cout << "Donor name: ";
-            getline(cin, name);
+            case 1: {
+                string name = readNonEmptyLine("Donor Org / Name: ");
+                string contact = readValidPhoneNumber("Contact Phone (10 digits): ", system);
+                string addr = readNonEmptyLine("Physical Street Address: ");
+                string type = readNonEmptyLine("Donor Type (Restaurant/Mess/Catering): ");
+                int id = system.registerDonor(name, contact, addr, type);
+                cout << "Registered. Assigned Donor ID = " << id << "\n";
+                break;
+            }
+            case 2: {
+                string name = readNonEmptyLine("NGO / Shelter Name: ");
+                string contact = readValidPhoneNumber("Contact Phone (10 digits): ", system);
+                string addr = readNonEmptyLine("Physical Street Address: ");
+                string diet = readNonEmptyLine("Diet Requirement (veg / all): ");
+                int id = system.registerNGO(name, contact, addr, diet);
+                cout << "Registered. Assigned Recipient ID = " << id << "\n";
+                break;
+            }
+            case 3: {
+                string name = readNonEmptyLine("Animal Shelter Name: ");
+                string contact = readValidPhoneNumber("Contact Phone (10 digits): ", system);
+                string addr = readNonEmptyLine("Physical Street Address: ");
+                string species = readNonEmptyLine("Species (e.g. Dogs / Cats): ");
+                int id = system.registerAnimalShelter(name, contact, addr, species);
+                cout << "Registered. Assigned Animal Shelter ID = " << id << "\n";
+                break;
+            }
+            case 4: {
+                int dId = readPositiveInt("Enter Registered Entity ID: ");
+                if (!system.userExists(dId)) {
+                    cout << "[Error] Entity ID #" << dId << " is not registered. Please register first.\n";
+                    break;
+                }
+                string foodName = readNonEmptyLine("Food Dish Name: ");
+                string cat = readNonEmptyLine("Category (Prepared Meal / Bakery): ");
+                int qty = readPositiveInt("Servings Quantity: ");
+                int hrs = readPositiveInt("Expiry Shelf-Life (hours remaining): ");
+                string diet = readNonEmptyLine("Diet Type ('veg', 'non-veg', or 'plain'): ");
+                string ing = readNonEmptyLine("List Raw Ingredients (comma-separated): ");
+                string spice = readNonEmptyLine("Spice Level ('Mild', 'Medium', 'Spicy'): ");
+                string notes = readNonEmptyLine("Extra Info / Prep Notes: ");
+                system.donateFood(dId, foodName, cat, qty, hrs, diet, ing, spice, notes);
+                break;
+            }
+            case 5: {
+                int rId = readPositiveInt("Enter Registered Recipient ID: ");
+                if (!system.recipientExists(rId)) {
+                    cout << "[Error] Recipient #" << rId << " is not registered. Please register first.\n";
+                    break;
+                }
+                string foodName = readNonEmptyLine("Food Dish Requested: ");
+                int qty = readPositiveInt("Servings Needed: ");
+                cout << "Allergen Restrictions (e.g., 'Dairy, Peanuts, Gluten' or 'none'): ";
+                string allergies;
+                getline(cin, allergies);
+                allergies = trim(allergies);
+                if (allergies.empty()) allergies = "none";
 
-            cout << "Donor pickup address: ";
-            getline(cin, address);
+                system.requestFood(rId, foodName, qty, allergies);
+                break;
+            }
+            case 6: {
+                int fId = readPositiveInt("Enter Food Item ID to cancel: ");
+                int dId = readPositiveInt("Enter your Donor ID: ");
+                system.cancelDonation(fId, dId);
+                break;
+            }
+            case 7: {
+                int ordId = readPositiveInt("Enter Order ID: ");
+                int uId = readPositiveInt("Enter your User ID: ");
+                int role = readMenuChoice("Are you (1) Donor or (2) Recipient? ", 1, 2);
+                system.confirmDelivery(ordId, uId, (role == 1));
+                break;
+            }
+            case 8: {
+                int ordId = readPositiveInt("Enter Order ID with spoiled food: ");
+                int rId = readPositiveInt("Enter your Recipient ID: ");
+                if (!system.recipientExists(rId)) {
+                    cout << "[Error] Recipient ID not found.\n";
+                    break;
+                }
+                string details = readNonEmptyLine("Describe condition of spoiled food: ");
+                system.fileSpoiledFoodComplaint(ordId, rId, details);
+                break;
+            }
+            case 9: {
+                int uId = readPositiveInt("Enter your User ID: ");
+                system.displayUserNotifications(uId);
+                break;
+            }
+            case 10:
+                system.displayOrderTransactions();
+                break;
 
-            int newId =
-                system.registerDonor(name, address);
-
-            if (newId != -1)
-                cout << "Registered! Donor ID = "
-                     << newId << endl;
-
-            break;
-        }
-
-        case 2: {
-            id = readInt("Your Donor ID: ");
-
-            if (!system.donorExists(id)) {
-                cout << "Error: Donor #" << id
-                     << " is not registered. Donation rejected.\n";
+            case 999: {
+                cout << "\n[ADMIN ACCESS GRANTED] Select internal diagnostic action:\n";
+                cout << "  1. Run Matching Engine Manually\n";
+                cout << "  2. View Active Inventory (Linked List)\n";
+                cout << "  3. View Urgency Radar (Min-Heap)\n";
+                cout << "  4. View Request Pipeline (std::queue)\n";
+                cout << "  5. View Registered Entities (Taxonomy)\n";
+                cout << "  6. Trigger Manual Expiry Sweep\n";
+                int aChoice = readMenuChoice("Admin choice (1-6): ", 1, 6);
+                switch (aChoice) {
+                    case 1: system.processMatchingPipeline(); break;
+                    case 2: system.adminDisplayInventory(); break;
+                    case 3: system.adminDisplayUrgencyHeap(); break;
+                    case 4: system.adminDisplayRequestQueue(); break;
+                    case 5: system.adminDisplayUsers(); break;
+                    case 6: {
+                        system.autoPurgeExpiredFood();
+                        cout << ">>> Expiry sweep completed.\n";
+                        break;
+                    }
+                }
                 break;
             }
 
-            cout << "Food item name: ";
-            getline(cin, food);
-
-            days = readNonNegativeInt(
-                "Expires in how many days: "
-            );
-
-            while (true) {
-                cout << "Food type (1 = Veg, 2 = Non-Veg): ";
-                string type;
-                getline(cin, type);
-
-                if (type == "1") {
-                    foodType = "Veg";
-                    break;
-                }
-
-                if (type == "2") {
-                    foodType = "Non-Veg";
-                    break;
-                }
-
-                cout << "Please choose 1 or 2.\n";
-            }
-
-            cout << "Allergens "
-                    "(comma-separated, or 'none'): ";
-            getline(cin, allergens);
-
-            system.donateFood(
-                id, food, days, allergens, foodType
-            );
-
-            break;
-        }
-
-        case 3: {
-            cout << "NGO name: ";
-            getline(cin, name);
-
-            cout << "Food requirements "
-                    "(comma-separated, or 'none'): ";
-            getline(cin, requirements);
-
-            while (true) {
-                cout << "Dietary preference "
-                        "(1 = Any, 2 = Veg, 3 = Non-Veg): ";
-                string choiceDiet;
-                getline(cin, choiceDiet);
-
-                if (choiceDiet == "1") {
-                    dietaryPreference = "Any";
-                    break;
-                }
-
-                if (choiceDiet == "2") {
-                    dietaryPreference = "Veg";
-                    break;
-                }
-
-                if (choiceDiet == "3") {
-                    dietaryPreference = "Non-Veg";
-                    break;
-                }
-
-                cout << "Please choose 1, 2, or 3.\n";
-            }
-
-            cout << "Allergy restrictions - food this NGO "
-                    "CANNOT accept "
-                    "(comma-separated, or 'none'): ";
-            getline(cin, allergens);
-
-            int newId = system.registerNGO(
-                name,
-                requirements,
-                dietaryPreference,
-                allergens
-            );
-
-            if (newId != -1)
-                cout << "Registered! NGO ID = "
-                     << newId << endl;
-
-            break;
-        }
-
-        case 4: {
-            id = readInt("Your NGO ID: ");
-
-            if (!system.ngoExists(id)) {
-                cout << "Error: NGO #" << id
-                     << " is not registered. Request rejected.\n";
+            case 0:
+                cout << "\nTerminating session. Backing up persistent data...\n";
                 break;
-            }
-
-            cout << "Food item needed: ";
-            getline(cin, food);
-
-            system.requestFood(id, food);
-            break;
+            default:
+                cout << "[Error] Invalid choice.\n";
+                break;
         }
-
-        case 5:
-            system.matchAll();
-            break;
-
-        case 6:
-            system.showFoodInventory();
-            break;
-
-        case 7:
-            system.showFoodHeap();
-            break;
-
-        case 8:
-            system.showRequestQueue();
-            break;
-
-        case 9:
-            system.showGraph();
-            break;
-
-        case 10:
-            system.showHistory();
-            break;
-
-        case 11:
-            cout << "Enter allergen to search: ";
-            getline(cin, allergens);
-            system.lookupAllergy(allergens);
-            break;
-
-        case 12:
-            system.showAllDonors();
-            break;
-
-        case 13:
-            system.showAllNGOs();
-            break;
-
-        case 0:
-            cout << "Exiting...\n";
-            break;
-
-        default:
-            cout << "Invalid menu choice.\n";
-        }
-
     } while (choice != 0);
 
     return 0;
