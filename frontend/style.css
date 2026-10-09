@@ -866,3 +866,71 @@ textarea {
     padding: 3px 12px;
   }
 }
+
+/* =====================================================================
+   FoodRescue integration additions (merged — keep at end of file)
+   Adds: select styling, warn badge, small buttons, form hint,
+   error message color, 5th mobile nav column
+   ===================================================================== */
+
+select {
+  display: block;
+  width: 100%;
+  padding: 13px 14px;
+  color: var(--text);
+  background: #fbfcfa;
+  border: 1px solid #d8dfd7;
+  border-radius: 10px;
+  outline: none;
+  font: inherit;
+  transition:
+    border-color 0.15s ease,
+    box-shadow 0.15s ease,
+    background 0.15s ease;
+}
+
+select:focus {
+  background: #ffffff;
+  border-color: #4e9b6f;
+  box-shadow: 0 0 0 4px rgba(58, 145, 96, 0.12);
+}
+
+.message.error {
+  color: #b3261e;
+}
+
+.badge.warn {
+  color: #8a5a00;
+  background: #fdf3d7;
+  border-color: #f0dfb0;
+}
+
+.btn-small {
+  padding: 6px 10px;
+  margin: 2px 6px 2px 0;
+  color: var(--green-800);
+  background: #ffffff;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  font-size: 12px;
+  font-weight: 800;
+  cursor: pointer;
+  transition: 0.15s ease;
+}
+
+.btn-small:hover {
+  background: var(--green-100);
+  border-color: #bcd8c6;
+}
+
+.form-hint {
+  margin: -6px 0 0;
+  color: #8b948e;
+  font-size: 12px;
+}
+
+@media (max-width: 650px) {
+  .sidebar nav {
+    grid-template-columns: repeat(5, 1fr);
+  }
+}
