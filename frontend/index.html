@@ -17,6 +17,9 @@
       <button class="nav active" data-page="dashboard">
         <span class="nav-icon">🏠</span><span>Dashboard</span>
       </button>
+      <button class="nav" data-page="register">
+        <span class="nav-icon">📝</span><span>Register</span>
+      </button>
       <button class="nav" data-page="donate">
         <span class="nav-icon">🎁</span><span>Donate Food</span>
       </button>
@@ -30,8 +33,8 @@
 
     <div class="side-bottom">
       <div class="mini-card">
-        <b>Food saved</b>
-        <strong id="sideSaved">0 kg</strong>
+        <b>Servings saved</b>
+        <strong id="sideSaved">0</strong>
       </div>
       <button class="logout" id="refreshBtn">↻ Refresh data</button>
     </div>
@@ -64,15 +67,15 @@
 
       <div class="stats">
         <div class="stat">
-          <span>Food donated</span>
-          <b id="statKg">0 kg</b>
-          <small>Total recorded</small>
+          <span>Servings donated</span>
+          <b id="statServings">0</b>
+          <small>Across active donations</small>
         </div>
 
         <div class="stat">
-          <span>Donations</span>
+          <span>Active donations</span>
           <b id="statDonations">0</b>
-          <small>Food entries</small>
+          <small>On the radar</small>
         </div>
 
         <div class="stat">
@@ -84,7 +87,7 @@
         <div class="stat">
           <span>Pickups</span>
           <b id="statPickups">0</b>
-          <small>Scheduled</small>
+          <small>Orders dispatched</small>
         </div>
       </div>
 
@@ -100,7 +103,7 @@
           <thead>
             <tr>
               <th>Food</th>
-              <th>Quantity</th>
+              <th>Servings</th>
               <th>Donor</th>
               <th>Status</th>
             </tr>
@@ -114,70 +117,153 @@
       </div>
     </section>
 
+    <section id="register" class="page">
+      <div class="donate-layout">
+        <div class="form-card">
+          <p class="eyebrow">JOIN THE NETWORK</p>
+          <h2>Register</h2>
+          <p class="form-intro">
+            Register once to get your ID. You need this ID to donate food
+            (Donors) or to place requests (NGOs &amp; Animal Shelters).
+          </p>
+
+          <form id="registerForm">
+            <label>
+              <span class="field-title">I am a</span>
+              <select name="role" id="regRole">
+                <option value="donor">Donor (Restaurant / Mess / Catering)</option>
+                <option value="ngo">NGO (food recipient)</option>
+                <option value="shelter">Animal Shelter (food recipient)</option>
+              </select>
+            </label>
+
+            <label>
+              <span class="field-title">Name</span>
+              <input name="name" required placeholder="Organization name">
+            </label>
+
+            <div class="two">
+              <label>
+                <span class="field-title">Phone (10 digits)</span>
+                <input name="contact" required maxlength="10" placeholder="e.g. 9876543210">
+              </label>
+              <label>
+                <span class="field-title" id="regSubtypeLabel">Donor type</span>
+                <input name="subtype" required placeholder="Restaurant / Mess / Catering">
+              </label>
+            </div>
+
+            <label>
+              <span class="field-title">Street address</span>
+              <textarea name="address" required placeholder="Pickup / delivery address"></textarea>
+            </label>
+
+            <button class="primary form-submit" type="submit">Register</button>
+            <p id="registerMessage" class="message"></p>
+          </form>
+        </div>
+
+        <aside class="donate-aside">
+          <h3>Why register?</h3>
+          <ol class="steps">
+            <li>
+              <strong>Get your unique ID</strong>
+              <span>The backend assigns an ID used on every donation or request.</span>
+            </li>
+            <li>
+              <strong>One phone, one account</strong>
+              <span>10-digit phones are validated and kept unique per entity.</span>
+            </li>
+            <li>
+              <strong>Stay accountable</strong>
+              <span>Penalties for spoiled food are tracked per registered entity.</span>
+            </li>
+          </ol>
+          <div class="impact-note">
+            🌱 Every registered member helps reduce food waste.
+          </div>
+        </aside>
+      </div>
+    </section>
+
     <section id="donate" class="page">
       <div class="donate-layout">
         <div class="form-card">
           <p class="eyebrow">NEW DONATION</p>
           <h2>Donate surplus food</h2>
           <p class="form-intro">
-            Add the food details below so the community team can arrange a pickup.
+            Fill in the food details — the matching engine pairs your surplus
+            with waiting requests automatically.
           </p>
 
           <form id="donationForm">
-            <label>
-              <span class="field-title">Food name</span>
-              <input
-                name="food_name"
-                required
-                placeholder="e.g. Cooked rice"
-              >
-            </label>
+            <div class="two">
+              <label>
+                <span class="field-title">Your Donor ID</span>
+                <input name="donor_id" type="number" min="1" required
+                  placeholder="From the Register page">
+              </label>
+              <label>
+                <span class="field-title">Food name</span>
+                <input name="food_name" required placeholder="e.g. Vegetable biryani">
+              </label>
+            </div>
 
             <div class="two">
               <label>
-                <span class="field-title">Quantity</span>
-                <input
-                  name="quantity_kg"
-                  type="number"
-                  min="0.1"
-                  step="0.1"
-                  placeholder="Weight in kg"
-                  required
-                >
+                <span class="field-title">Category</span>
+                <select name="category">
+                  <option>Prepared Meal</option>
+                  <option>Bakery</option>
+                </select>
               </label>
-
               <label>
-                <span class="field-title">Donor name</span>
-                <input
-                  name="donor_name"
-                  required
-                  placeholder="Your name"
-                >
+                <span class="field-title">Servings</span>
+                <input name="quantity" type="number" min="1" step="1" required
+                  placeholder="Number of servings">
+              </label>
+            </div>
+
+            <div class="two">
+              <label>
+                <span class="field-title">Shelf-life (hours)</span>
+                <input name="shelf_hours" type="number" min="1" step="1" required
+                  placeholder="Hours until expiry">
+              </label>
+              <label>
+                <span class="field-title">Diet type</span>
+                <select name="diet_type">
+                  <option value="veg">Veg</option>
+                  <option value="non-veg">Non-veg</option>
+                  <option value="plain">Plain (animal-safe)</option>
+                </select>
+              </label>
+            </div>
+
+            <div class="two">
+              <label>
+                <span class="field-title">Spice level</span>
+                <select name="spice_level">
+                  <option>Mild</option>
+                  <option>Medium</option>
+                  <option>Spicy</option>
+                </select>
+              </label>
+              <label>
+                <span class="field-title">Ingredients (comma-separated)</span>
+                <input name="ingredients" required
+                  placeholder="e.g. rice, milk, cashew">
               </label>
             </div>
 
             <label>
-              <span class="field-title">Pickup address</span>
-              <textarea
-                name="pickup_address"
-                required
-                placeholder="Where can it be collected?"
-              ></textarea>
+              <span class="field-title">Extra notes</span>
+              <textarea name="notes" placeholder="Optional prep / pickup details"></textarea>
             </label>
 
-            <label>
-              <span class="field-title">Note</span>
-              <textarea
-                name="notes"
-                placeholder="Optional details"
-              ></textarea>
-            </label>
-
-            <button class="primary form-submit" type="submit">
-              Submit donation
-            </button>
-
+            <button class="primary form-submit" type="submit">Submit donation</button>
             <p id="formMessage" class="message"></p>
+            <p class="form-hint">📍 Pickup address is taken from the address you registered with.</p>
           </form>
         </div>
 
@@ -187,15 +273,16 @@
           <ol class="steps">
             <li>
               <strong>List surplus food</strong>
-              <span>Share the food name, quantity, and donor details.</span>
+              <span>Servings, shelf-life and diet type set its urgency on the radar.</span>
             </li>
             <li>
-              <strong>Add pickup location</strong>
-              <span>Provide a clear address for easy collection.</span>
+              <strong>Auto-matching</strong>
+              <span>Ingredients are screened for allergens; NGOs and shelters
+              get only compatible, safe food.</span>
             </li>
             <li>
-              <strong>Help your community</strong>
-              <span>Your donation will appear on the dashboard.</span>
+              <strong>Pickup &amp; handshake</strong>
+              <span>Orders appear under Pickups — both sides confirm delivery.</span>
             </li>
           </ol>
 
@@ -207,6 +294,41 @@
     </section>
 
     <section id="requests" class="page">
+      <div class="form-card" style="max-width:none; margin-bottom:24px;">
+        <p class="eyebrow">NEW REQUEST</p>
+        <h2 style="font-size:30px;">Request food</h2>
+        <p class="form-intro">
+          Registered NGOs and shelters can request dishes here. Requests enter
+          the FIFO queue and are matched as surplus arrives.
+        </p>
+
+        <form id="requestForm">
+          <div class="two">
+            <label>
+              <span class="field-title">Your Recipient ID</span>
+              <input name="recipient_id" type="number" min="1" required
+                placeholder="From the Register page">
+            </label>
+            <label>
+              <span class="field-title">Servings needed</span>
+              <input name="quantity" type="number" min="1" step="1" required>
+            </label>
+          </div>
+          <div class="two">
+            <label>
+              <span class="field-title">Food dish requested</span>
+              <input name="food_name" required placeholder="e.g. Cooked rice">
+            </label>
+            <label>
+              <span class="field-title">Allergen restrictions</span>
+              <input name="allergies" placeholder="e.g. Dairy, Peanuts — or 'none'">
+            </label>
+          </div>
+          <button class="primary form-submit" type="submit">Submit request</button>
+          <p id="requestMessage" class="message"></p>
+        </form>
+      </div>
+
       <div class="section-head">
         <div>
           <p class="eyebrow">COMMUNITY NEEDS</p>
@@ -231,13 +353,14 @@
             <tr>
               <th>Food</th>
               <th>Address</th>
-              <th>Time</th>
+              <th>Servings</th>
               <th>Status</th>
+              <th>Confirm</th>
             </tr>
           </thead>
           <tbody id="pickupTable">
             <tr>
-              <td colspan="4" class="empty">Loading...</td>
+              <td colspan="5" class="empty">Loading...</td>
             </tr>
           </tbody>
         </table>
