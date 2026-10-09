@@ -1,0 +1,23 @@
+*BUGS*
+
+1-Blind matching: matchOne() pairs items purely by queue order, ignoring whether foodName matches or if allergens conflict with NGO needs.
+
+2-No ID validation: Accepts nonexistent Donor or NGO IDs during donations and requests.
+
+3-Shared user ID counter: Uses one counter (nextUserId) for both groups, leading to non-consecutive IDs.
+
+4-Unchecked input errors: Non-numeric input into numeric fields puts cin into an unhandled fail state, triggering an infinite loop.
+
+5-Invalid expiry values: Allows negative expiry days, wrongly prioritizing already-spoiled food.
+
+*SOLUTIONS*
+
+1-Key-based matching: Match items by foodName and verify allergen safety before popping from queues.
+
+2-ID validation helper: Check if donorId exists in donors and ngoId exists in ngos before queueing.
+
+3-Separate counters: Split nextUserId into independent nextDonorId and nextNgoId counters.
+
+4-Stream recovery: Use cin.fail() checks alongside cin.clear() and cin.ignore() on all numeric inputs.
+
+5-Range checks: Reject or reprompt if expiryDays <= 0.
