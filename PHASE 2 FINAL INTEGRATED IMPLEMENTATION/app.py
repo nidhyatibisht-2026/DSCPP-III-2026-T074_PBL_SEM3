@@ -1,4 +1,4 @@
-# app.py — Python Flask API Bridge (Frontend <-> phase2.cpp/exe <-> SQLite DBMS)
+# app.py - Python Flask API Bridge (Frontend <-> phase2.cpp/exe <-> SQLite DBMS)
 from flask import Flask, request, jsonify, send_from_directory
 import sqlite3
 import subprocess
@@ -9,29 +9,46 @@ from db_manage2 import FoodSurplusDBMS
 app = Flask(__name__, static_folder=".")
 dbms = FoodSurplusDBMS("food_surplus2.db")
 
-# Option 1: Configured directly for your laptop's phase2.cpp and phase2.exe
+# Automatically include Code::Blocks / MinGW DLL paths on Windows so phase2.exe never shows a missing DLL error
+if os.name == "nt":
+    possible_mingw_paths = [
+        r"C:\Program Files\CodeBlocks\MinGW\bin",
+        r"C:\Program Files (x86)\CodeBlocks\MinGW\bin",
+        r"C:\MinGW\bin",
+        r"C:\msys64\mingw64\bin",
+        r"C:\TDM-GCC-64\bin"
+    ]
+    for p in possible_mingw_paths:
+        if os.path.exists(p) and p not in os.environ.get("PATH", ""):
+            os.environ["PATH"] = p + os.pathsep + os.environ.get("PATH", "")
+
 CPP_SOURCE = "phase2.cpp"
 CPP_EXE = "phase2.exe" if os.name == "nt" else "./phase2"
 
+
 def ensure_cpp_compiled():
-    """Uses existing phase2.exe or compiles phase2.cpp if phase2.exe is missing."""
+    """Uses existing phase2.exe or compiles phase2.cpp statically if phase2.exe is missing."""
     exe_clean = "phase2.exe" if os.name == "nt" else "phase2"
     if os.path.exists(CPP_SOURCE) and not os.path.exists(exe_clean):
         try:
-            subprocess.run(["g++", "-std=c++17", CPP_SOURCE, "-o", exe_clean], check=True)
+            subprocess.run(
+                ["g++", "-std=c++17", "-static", "-static-libgcc", "-static-libstdc++", CPP_SOURCE, "-o", exe_clean],
+                check=True
+            )
             print(f"[Flask-C++ Bridge] Compiled {CPP_SOURCE} -> {exe_clean}")
         except Exception as e:
             print(f"[Flask-C++ Bridge] Note: g++ auto-compile skipped ({e})")
 
+
 def invoke_cpp_engine(stdin_payload):
-    """
-    Feeds form inputs directly into phase2.exe with a 3-second timeout guard
-    so the process never hangs.
-    """
+    """Feeds form inputs directly into phase2.exe with a 3-second timeout guard."""
     exe_clean = "phase2.exe" if os.name == "nt" else "phase2"
     if not os.path.exists(exe_clean):
         return ""
     try:
+        if os.name == "nt":
+            import ctypes
+            ctypes.windll.kernel32.SetErrorMode(0x0001 | 0x0002)
         res = subprocess.run(
             [CPP_EXE],
             input=stdin_payload,
@@ -43,12 +60,11 @@ def invoke_cpp_engine(stdin_payload):
     except Exception:
         return ""
 
-# Sync existing users between C++ (users.dat) and SQLite (food_surplus2.db) on startup
+
 ensure_cpp_compiled()
 dbms.sync_from_cpp()
 dbms.sync_to_cpp()
 
-# Hash Table Allergen Dictionary (mirrors phase2.cpp)
 ALLERGEN_MAP = {
     "milk": "Dairy", "milk solids": "Dairy", "cheese": "Dairy",
     "yogurt": "Dairy", "butter": "Dairy", "paneer": "Dairy",
@@ -57,14 +73,19 @@ ALLERGEN_MAP = {
     "wheat": "Gluten", "maida": "Gluten", "semolina": "Gluten", "bread": "Gluten",
     "egg": "Egg", "soy": "Soy", "soy sauce": "Soy", "tofu": "Soy"
 }
+
 TOXIC_LIST = ["onion", "garlic", "chocolate", "xylitol", "chili", "pepper", "raisin", "grape"]
 
+
 def get_safe_connection():
-    """Returns a SQLite connection with a 10s lock timeout and Foreign Keys enabled."""
-    conn = sqlite3.connect("food_surplus2.db", timeout=10.0)
+    """Returns a SQLite connection with a 20s lock timeout, WAL mode, and Foreign Keys enabled."""
+    conn = sqlite3.connect("food_surplus2.db", timeout=20.0, check_same_thread=False)
     conn.row_factory = sqlite3.Row
+    conn.execute("PRAGMA journal_mode = WAL;")
+    conn.execute("PRAGMA busy_timeout = 20000;")
     conn.execute("PRAGMA foreign_keys = ON;")
     return conn
+
 
 def detect_allergens(ingredients_str):
     tokens = [t.strip().lower() for t in ingredients_str.split(",") if t.strip() and t.strip().lower() != "none"]
@@ -74,6 +95,7 @@ def detect_allergens(ingredients_str):
             detected.append(ALLERGEN_MAP[tok])
     return ", ".join(detected) if detected else "none"
 
+
 def auto_purge_expired(conn):
     now = int(time.time())
     cur = conn.cursor()
@@ -81,19 +103,24 @@ def auto_purge_expired(conn):
         SELECT food_id, name, donor_id FROM food_items
         WHERE is_assigned = 0 AND is_cancelled = 0 AND is_expired = 0 AND expiry_time <= ?
     """, (now,))
-    for r in cur.fetchall():
+    rows = cur.fetchall()
+    for r in rows:
         cur.execute("UPDATE food_items SET is_expired = 1 WHERE food_id = ?", (r["food_id"],))
         msg = f"[AUTOMATIC EXPIRY NOTICE] Donation Food #{r['food_id']} ({r['name']}) expired without recipient requests."
-        cur.execute("INSERT INTO notifications (user_id, message, timestamp) VALUES (?, ?, ?)",
-                    (r["donor_id"], msg, now))
-    conn.commit()
+        cur.execute(
+            "INSERT INTO notifications (user_id, message, timestamp) VALUES (?, ?, ?)",
+            (r["donor_id"], msg, now)
+        )
+    if rows:
+        conn.commit()
+
 
 def run_matching_pipeline(conn):
     """
     Executes the deterministic matching pipeline across SQLite & C++ rules:
     - FIFO Queue order for pending recipient requests (ORDER BY request_id ASC)
     - Min-Heap Urgency order for active food items (ORDER BY expiry_time ASC)
-    - Polymorphic dietary & toxicity screening + Hash Table allergen filtering
+    - Dynamic City Location matching, Polymorphic dietary & toxicity screening + Allergen filtering
     """
     auto_purge_expired(conn)
     cur = conn.cursor()
@@ -119,8 +146,18 @@ def run_matching_pipeline(conn):
         for food in foods:
             if food["donor_id"] == rec["id"]:
                 continue
+
+            # Dynamic City Matching (Supports Varanasi, Delhi, Dehradun, Mumbai, etc. automatically)
+            donor_loc = food["donor_address"].strip().lower()
+            rec_loc = rec["address"].strip().lower()
+            donor_city = donor_loc.replace(",", " ").split()[-1] if donor_loc else ""
+            rec_city = rec_loc.replace(",", " ").split()[-1] if rec_loc else ""
+            if donor_city != rec_city and donor_loc not in rec_loc and rec_loc not in donor_loc:
+                continue
+
             if food["name"].lower() not in req["food_name"].lower() and req["food_name"].lower() not in food["name"].lower():
                 continue
+
             if rec["role"] == "NGO" and rec["extra_info"].strip().lower() == "veg" and food["diet_type"].lower() == "non-veg":
                 continue
             if rec["role"] == "SHELTER":
@@ -131,6 +168,7 @@ def run_matching_pipeline(conn):
 
             req_alg = [a.strip().lower() for a in (req["allergies"] or "").split(",") if a.strip() and a.strip().lower() != "none"]
             food_alg = [a.strip().lower() for a in (food["allergens"] or "").split(",") if a.strip() and a.strip().lower() != "none"]
+
             conflict = False
             for p in food_alg:
                 for rst in req_alg:
@@ -163,19 +201,23 @@ def run_matching_pipeline(conn):
                 VALUES (?, ?, ?, ?, ?, 30.0, 'Dispatched')
             """, (next_oid, food["food_id"], food["donor_id"], rec["id"], take))
 
-            cur.execute("INSERT INTO notifications (user_id, message, timestamp) VALUES (?, ?, ?)",
-                        (food["donor_id"], f"Order #{next_oid}: Food #{food['food_id']} ({take} servings) matched to {rec['name']}.", now))
-            cur.execute("INSERT INTO notifications (user_id, message, timestamp) VALUES (?, ?, ?)",
-                        (rec["id"], f"Order #{next_oid}: {take} servings of {food['name']} from Donor #{food['donor_id']} dispatched.", now))
+            cur.execute(
+                "INSERT INTO notifications (user_id, message, timestamp) VALUES (?, ?, ?)",
+                (food["donor_id"], f"Order #{next_oid}: Food #{food['food_id']} ({take} servings) matched to {rec['name']}.", now)
+            )
+            cur.execute(
+                "INSERT INTO notifications (user_id, message, timestamp) VALUES (?, ?, ?)",
+                (rec["id"], f"Order #{next_oid}: {take} servings of {food['name']} from Donor #{food['donor_id']} dispatched.", now)
+            )
 
         if needed == 0:
             cur.execute("UPDATE food_requests SET status = 'Matched', quantity = 0 WHERE request_id = ?", (req["request_id"],))
         else:
             cur.execute("UPDATE food_requests SET quantity = ? WHERE request_id = ?", (needed, req["request_id"]))
 
-    conn.commit()
+        conn.commit()
 
-# CORS headers so browser fetch() calls from index.html always succeed
+
 @app.after_request
 def add_cors(response):
     response.headers["Access-Control-Allow-Origin"] = "*"
@@ -183,18 +225,20 @@ def add_cors(response):
     response.headers["Access-Control-Allow-Headers"] = "Content-Type"
     return response
 
-# Serve Frontend UI at http://localhost:8080/
+
 @app.route("/")
 def serve_index():
     return send_from_directory(".", "index.html")
+
 
 @app.route("/<path:path>")
 def serve_static(path):
     return send_from_directory(".", path)
 
-# -------------------- 1. DASHBOARD STATS --------------------
+
 @app.route("/api/stats", methods=["GET"])
 def api_stats():
+    conn = None
     try:
         conn = get_safe_connection()
         auto_purge_expired(conn)
@@ -214,13 +258,16 @@ def api_stats():
             "pickups": pickups
         })
     except Exception as e:
+        if conn:
+            conn.close()
         return jsonify({"ok": False, "error": str(e)})
 
-# -------------------- 2. DONATIONS --------------------
+
 @app.route("/api/donations", methods=["GET", "POST", "OPTIONS"])
 def api_donations():
     if request.method == "OPTIONS":
         return ("", 204)
+    conn = None
     try:
         conn = get_safe_connection()
         auto_purge_expired(conn)
@@ -264,19 +311,17 @@ def api_donations():
 
         if not all([name, cat, diet, ing, spice]):
             conn.close()
-            return jsonify({"ok": False, "error": "missing required fields: food_name, category, diet_type, ingredients, spice_level"})
+            return jsonify({"ok": False, "error": "missing required fields"})
 
         cur.execute("SELECT * FROM users WHERE id = ?", (donor_id,))
         donor = cur.fetchone()
         if not donor:
             conn.close()
-            return jsonify({"ok": False, "error": f"Donor ID {donor_id} is not registered — use the Register page first"})
+            return jsonify({"ok": False, "error": f"Donor ID {donor_id} not registered"})
+
         if qty <= 0 or hours <= 0:
             conn.close()
             return jsonify({"ok": False, "error": "quantity and shelf_hours must be > 0"})
-
-        # Pass to compiled C++ engine (phase2.exe Option 4: Donate Food Surplus, then 0: Exit)
-        invoke_cpp_engine(f"4\n{donor_id}\n{name}\n{cat}\n{qty}\n{hours}\n{diet}\n{ing}\n{spice}\n{notes}\n0\n")
 
         allergens = detect_allergens(ing)
         expiry_time = now + (hours * 3600)
@@ -289,19 +334,25 @@ def api_donations():
                                     diet_type, ingredients, allergens, spice_level, extra_notes, donor_id, donor_address)
             VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
         """, (next_fid, name, cat, qty, now, expiry_time, hours, diet, ing, allergens, spice, notes, donor_id, donor["address"]))
-        conn.commit()
 
+        conn.commit()
         run_matching_pipeline(conn)
         conn.close()
+        conn = None
+
+        invoke_cpp_engine(f"4\n{donor_id}\n{name}\n{cat}\n{qty}\n{hours}\n{diet}\n{ing}\n{spice}\n{notes}\n0\n")
         return jsonify({"ok": True, "food_id": next_fid})
     except Exception as e:
+        if conn:
+            conn.close()
         return jsonify({"ok": False, "error": str(e)})
 
-# -------------------- 3. FOOD REQUESTS --------------------
+
 @app.route("/api/requests", methods=["GET", "POST", "OPTIONS"])
 def api_requests():
     if request.method == "OPTIONS":
         return ("", 204)
+    conn = None
     try:
         conn = get_safe_connection()
         auto_purge_expired(conn)
@@ -320,7 +371,7 @@ def api_requests():
                 desc = f"Looking for: {r['food_name']}"
                 alg = (r["allergies"] or "").strip()
                 if alg and alg.lower() != "none":
-                    desc += f"  |  avoids: {alg}"
+                    desc += f" | avoids: {alg}"
                 items.append({
                     "id": r["request_id"],
                     "recipient_name": r["recipient_name"] or f"User #{r['recipient_id']}",
@@ -346,13 +397,11 @@ def api_requests():
         rec = cur.fetchone()
         if not rec:
             conn.close()
-            return jsonify({"ok": False, "error": f"Recipient ID {rid} is not registered — register as an NGO or Animal Shelter first"})
+            return jsonify({"ok": False, "error": f"Recipient ID {rid} is not registered"})
+
         if qty <= 0:
             conn.close()
-            return jsonify({"ok": False, "error": "quantity (servings) must be > 0"})
-
-        # Pass to compiled C++ engine (phase2.exe Option 5: Submit Food Request, then 0: Exit)
-        invoke_cpp_engine(f"5\n{rid}\n{food_name}\n{qty}\n{allergies}\n0\n")
+            return jsonify({"ok": False, "error": "quantity must be > 0"})
 
         cur.execute("SELECT COALESCE(MAX(request_id), 0) + 1 FROM food_requests")
         next_req_id = cur.fetchone()[0]
@@ -365,17 +414,19 @@ def api_requests():
 
         run_matching_pipeline(conn)
         conn.close()
-        return jsonify({
-            "ok": True,
-            "request_id": next_req_id,
-            "info": "Request queued — the matching engine runs automatically. Check Pickups for dispatched orders."
-        })
+        conn = None
+
+        invoke_cpp_engine(f"5\n{rid}\n{food_name}\n{qty}\n{allergies}\n0\n")
+        return jsonify({"ok": True, "request_id": next_req_id})
     except Exception as e:
+        if conn:
+            conn.close()
         return jsonify({"ok": False, "error": str(e)})
 
-# -------------------- 4. PICKUPS & TWO-WAY HANDSHAKE --------------------
+
 @app.route("/api/pickups", methods=["GET"])
 def api_pickups():
+    conn = None
     try:
         conn = get_safe_connection()
         cur = conn.cursor()
@@ -400,28 +451,30 @@ def api_pickups():
         conn.close()
         return jsonify({"ok": True, "items": items})
     except Exception as e:
+        if conn:
+            conn.close()
         return jsonify({"ok": False, "error": str(e)})
+
 
 @app.route("/api/pickups/confirm", methods=["POST", "OPTIONS"])
 def api_pickups_confirm():
     if request.method == "OPTIONS":
         return ("", 204)
+    conn = None
     try:
         b = request.get_json(silent=True) or {}
         oid = int(b.get("order_id") or 0)
         uid = int(b.get("user_id") or 0)
         role = (b.get("role") or "").strip()
 
-        if oid <= 0 or uid <= 0 or role not in ("donor", "recipient"):
-            return jsonify({"ok": False, "error": "need order_id, user_id and role ('donor' or 'recipient')"})
-
         conn = get_safe_connection()
         cur = conn.cursor()
         cur.execute("SELECT * FROM orders WHERE order_id = ?", (oid,))
         ord_row = cur.fetchone()
+
         if not ord_row:
             conn.close()
-            return jsonify({"ok": False, "error": "[Error] Order ID not found."})
+            return jsonify({"ok": False, "error": "Order not found"})
 
         if role == "donor" and ord_row["donor_id"] == uid:
             cur.execute("UPDATE orders SET donor_confirmed = 1 WHERE order_id = ?", (oid,))
@@ -429,9 +482,9 @@ def api_pickups_confirm():
             cur.execute("UPDATE orders SET recipient_confirmed = 1 WHERE order_id = ?", (oid,))
         else:
             conn.close()
-            return jsonify({"ok": False, "error": "[Error] User ID does not match order record."})
-        conn.commit()
+            return jsonify({"ok": False, "error": "User mismatch"})
 
+        conn.commit()
         cur.execute("SELECT * FROM orders WHERE order_id = ?", (oid,))
         updated = cur.fetchone()
         if updated["donor_confirmed"] and updated["recipient_confirmed"]:
@@ -441,45 +494,50 @@ def api_pickups_confirm():
         conn.close()
         return jsonify({"ok": True})
     except Exception as e:
+        if conn:
+            conn.close()
         return jsonify({"ok": False, "error": str(e)})
 
-# -------------------- 5. SPOILED FOOD COMPLAINT (RS. 250 PENALTY) --------------------
+
 @app.route("/api/pickups/complain", methods=["POST", "OPTIONS"])
 def api_pickups_complain():
     if request.method == "OPTIONS":
         return ("", 204)
+    conn = None
     try:
         b = request.get_json(silent=True) or {}
         oid = int(b.get("order_id") or 0)
         rid = int(b.get("recipient_id") or 0)
-        details = (b.get("details") or "Spoiled food reported").strip()
 
         conn = get_safe_connection()
         cur = conn.cursor()
         cur.execute("SELECT * FROM orders WHERE order_id = ?", (oid,))
         ord_row = cur.fetchone()
+
         if not ord_row or ord_row["recipient_id"] != rid:
             conn.close()
-            return jsonify({"ok": False, "error": "[Error] Invalid Order ID or Recipient ID."})
-        if ord_row["is_spoiled"]:
-            conn.close()
-            return jsonify({"ok": False, "error": "[Error] Complaint already registered for this order."})
+            return jsonify({"ok": False, "error": "Invalid order"})
 
         cur.execute("UPDATE orders SET is_spoiled = 1, status = 'Complaint: Spoiled Food' WHERE order_id = ?", (oid,))
-        cur.execute("UPDATE users SET penalty_points = penalty_points + 1, penalty_fines = penalty_fines + 250.0 WHERE id = ?",
-                    (ord_row["donor_id"],))
+        cur.execute(
+            "UPDATE users SET penalty_points = penalty_points + 1, penalty_fines = penalty_fines + 250.0 WHERE id = ?",
+            (ord_row["donor_id"],)
+        )
         conn.commit()
         conn.close()
         dbms.sync_to_cpp()
-        return jsonify({"ok": True, "message": "Penalty of Rs. 250 and 1 strike imposed on Donor."})
+        return jsonify({"ok": True, "message": "Penalty of Rs. 250 imposed."})
     except Exception as e:
+        if conn:
+            conn.close()
         return jsonify({"ok": False, "error": str(e)})
 
-# -------------------- 6. USER REGISTRATION --------------------
+
 @app.route("/api/register", methods=["POST", "OPTIONS"])
 def api_register():
     if request.method == "OPTIONS":
         return ("", 204)
+    conn = None
     try:
         b = request.get_json(silent=True) or {}
         role = (b.get("role") or "").strip().lower()
@@ -489,37 +547,38 @@ def api_register():
         subtype = (b.get("subtype") or "").strip()
 
         if not all([role, name, contact, addr, subtype]):
-            return jsonify({"ok": False, "error": "missing fields: role, name, contact, address, subtype"})
+            return jsonify({"ok": False, "error": "missing fields"})
+
         if len(contact) != 10 or not contact.isdigit():
-            return jsonify({"ok": False, "error": "phone number must be exactly 10 digits"})
-        if role not in ("donor", "ngo", "shelter"):
-            return jsonify({"ok": False, "error": "role must be donor | ngo | shelter"})
+            return jsonify({"ok": False, "error": "phone must be 10 digits"})
 
         conn = get_safe_connection()
         cur = conn.cursor()
         cur.execute("SELECT 1 FROM users WHERE contact = ?", (contact,))
         if cur.fetchone():
             conn.close()
-            return jsonify({"ok": False, "error": "this phone number is already registered"})
+            return jsonify({"ok": False, "error": "phone already registered"})
 
         cur.execute("SELECT COALESCE(MAX(id), 0) + 1 FROM users")
         next_id = cur.fetchone()[0]
+
         cur.execute("""
             INSERT INTO users (id, role, name, contact, address, extra_info, penalty_points, penalty_fines)
             VALUES (?, ?, ?, ?, ?, ?, 0, 0.0)
         """, (next_id, role.upper(), name, contact, addr, subtype))
         conn.commit()
         conn.close()
-
-        # Sync updated SQLite user table immediately to users.dat for phase2.cpp
         dbms.sync_to_cpp()
         return jsonify({"ok": True, "id": next_id, "role": role})
     except Exception as e:
+        if conn:
+            conn.close()
         return jsonify({"ok": False, "error": str(e)})
+
 
 if __name__ == "__main__":
     print("=================================================================")
     print(" FoodFlow 3-Tier System Online -> http://localhost:8080")
     print(" Connected: HTML/JS Frontend <-> Flask <-> phase2.exe <-> SQLite")
     print("=================================================================")
-    app.run(host="0.0.0.0", port=8080, debug=True)
+    app.run(host="0.0.0.0", port=8080, debug=True, threaded=True)
