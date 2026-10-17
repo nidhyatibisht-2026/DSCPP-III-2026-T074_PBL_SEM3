@@ -42,7 +42,7 @@ FoodFlow is an integrated 3-tier web application designed to combat food waste a
 5. Live Dashboard Analytics: Real-time statistics tracking total donations, servings distributed, active requests, and pending pickups.
 
 ## Current Project Status & Progress:
-Phase 1 & 2 Completed: Core C++ data structures (phase2.cpp), SQLite database schema (schema2.sql), and DBMS management wrapper (db_manage2.py) fully implemented.
-Integration of backend, DBMS, frontend is done via Python Flask. Phase 2 functional prototype is implemented.
-Integration Completed: Flask server (app.py) successfully handles frontend-to-backend communication via local subprocess calls, avoiding CORS blocks.
-UI Live: Fully responsive web interface (index.html, style.css, app.js) deployed and tested locally on port 8080.
+1. Phase 1 & 2 Completed: Core C++ data structures (phase2.cpp), SQLite database schema (schema2.sql), and DBMS management wrapper (db_manage2.py) fully implemented.
+2. Integration of backend, DBMS, frontend is done via Python Flask. Phase 2 functional prototype is implemented.
+3. Integration Completed: Flask server (app.py) successfully handles frontend-to-backend communication via local subprocess calls, avoiding CORS blocks.
+4. UI Live: Fully responsive web interface (index.html, style.css, app.js) deployed and tested locally on port 8080.
