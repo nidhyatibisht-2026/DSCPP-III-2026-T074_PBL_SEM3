@@ -1,0 +1,20 @@
+﻿# Compiled C++ executables
+*.exe
+*.o
+*.obj
+
+# SQLite temporary files (keep the actual .db files tracked)
+*-shm
+*-wal
+
+# Python cache files
+__pycache__/
+*.py[cod]
+
+# Local environment files
+.venv/
+venv/
+.env
+
+# Temporary local backup
+README.md.backup

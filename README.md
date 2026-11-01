@@ -28,11 +28,12 @@ FoodFlow is an integrated 3-tier web application designed to combat food waste a
 * A C++ Compiler (Code::Blocks / GCC / MSVC)
 
 ### Step-by-Step Local Execution
-1. Clone the repository and navigate to the project directory:
-2. Ensure the C++ executable (phase2.exe) is compiled from phase2.cpp and placed in the root directory alongside app.py.
-3. Initialize or verify the SQLite database: python db_manage2.py
-4. Start the Flask API bridge server: py app.py
-5. Open your web browser and navigate to: http://localhost:8080
+1. Clone the repository and open the project directory in your terminal.
+2. Navigate to the integrated application folder: `cd "PHASE 2 FINAL INTEGRATED IMPLEMENTATION"`
+3. Ensure Python 3, Flask, and a C++ compiler (`g++`) are installed.
+4. Initialize or verify the SQLite database, if required: `py db_manage2.py`
+5. Start the Flask API bridge server: `py app.py`
+6. Open your web browser and navigate to: http://localhost:8080
 
 ## Major Features & Modules:-
 1. User Authentication & Profiles (users.dat + SQLite): Role-based registration for Donors and Recipient NGOs with 10-digit validation.
