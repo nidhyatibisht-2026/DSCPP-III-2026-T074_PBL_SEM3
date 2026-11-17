@@ -1,7 +1,11 @@
-﻿# Compiled C++ executables
+# Compiled C++ executables
 *.exe
 *.o
 *.obj
+
+# CMake build directories
+/build/
+/build-mingw/
 
 # SQLite temporary files (keep the actual .db files tracked)
 *-shm
@@ -18,3 +22,25 @@ venv/
 
 # Temporary local backup
 README.md.backup
+
+# Shared-library and static-library build outputs
+*.dll
+*.so
+*.dylib
+*.a
+
+# Local backup and test databases
+database/*backup*.db
+database/*test*.db
+*_backup*.db
+*_test.db
+
+# Local backup files
+*.backup
+*_backup*.dat
+
+# Temporary integration instructions
+INTEGRATION_PATCH_README.txt
+
+# Machine-specific VS Code settings
+.vscode/

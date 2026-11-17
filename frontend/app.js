@@ -1,4 +1,4 @@
-const API = "http://localhost:8080/api";
+const API = "/api";
 const pages = document.querySelectorAll(".page");
 const title = document.getElementById("pageTitle");
 
@@ -76,7 +76,7 @@ async function loadData() {
         </tr>`).join("")
       : `<tr><td colspan="5" class="empty">No pickups yet — orders appear here once a request is matched.</td></tr>`;
   } catch (e) {
-    const msg = `<tr><td colspan="5" class="empty">Backend not running. Start the C++ server on port 8080.</td></tr>`;
+    const msg = `<tr><td colspan="5" class="empty">Backend not running. Start FoodFlow using scripts/run_foodflow.bat.</td></tr>`;
     document.getElementById("recentTable").innerHTML = msg;
     document.getElementById("pickupTable").innerHTML = msg;
   }
@@ -132,7 +132,7 @@ document.getElementById("donationForm").onsubmit = async e => {
     if (j.ok) { e.target.reset(); loadData(); }
   } catch {
     msg.classList.add("error");
-    msg.textContent = "✗ Could not connect to the C++ backend.";
+    msg.textContent = "✗ Could not connect to the FoodFlow backend.";
   }
 };
 
@@ -157,7 +157,7 @@ document.getElementById("registerForm").onsubmit = async e => {
     if (j.ok) { e.target.reset(); loadData(); }
   } catch {
     msg.classList.add("error");
-    msg.textContent = "✗ Could not connect to the C++ backend.";
+    msg.textContent = "✗ Could not connect to the FoodFlow backend.";
   }
 };
 
@@ -177,7 +177,7 @@ document.getElementById("requestForm").onsubmit = async e => {
     if (j.ok) { e.target.reset(); loadData(); }
   } catch {
     msg.classList.add("error");
-    msg.textContent = "✗ Could not connect to the C++ backend.";
+    msg.textContent = "✗ Could not connect to the FoodFlow backend.";
   }
 };
 
