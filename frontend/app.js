@@ -30,29 +30,39 @@ document.querySelectorAll("[data-go]").forEach(n => {
 document.getElementById("refreshBtn").onclick = loadData;
 
 
-// ADMIN ACCESS BUTTON
+// ADMIN ACCESS
+const adminDialog = document.getElementById("adminDialog");
+
 document.getElementById("adminAccessBtn").onclick = () => {
-  window.location.href = API.replace(/\/api$/, "") + "/admin";
+  adminDialog.showModal();
+};
+
+document.getElementById("closeAdminDialog").onclick = () => {
+  adminDialog.close();
 };
 
 
+// API REQUEST
 async function get(path) {
-  const r = await fetch(API + path);
+  const response = await fetch(API + path);
 
-  if (!r.ok) throw new Error("API error");
+  if (!response.ok) {
+    throw new Error("API error");
+  }
 
-  return r.json();
+  return response.json();
 }
 
+
+// BADGE
 function badge(text) {
-  return `<span class="badge">${text}</span>`;
+  return `<span class="badge">${escapeHtml(text)}</span>`;
 }
 
 
+// LOAD DASHBOARD DATA
 async function loadData() {
-
   try {
-
     const [stats, donations, requests, pickups] =
       await Promise.all([
         get("/stats"),
@@ -77,36 +87,45 @@ async function loadData() {
       `${Number(stats.food_kg || 0).toFixed(1)} kg`;
 
 
+    // RECENT DONATIONS
     document.getElementById("recentTable").innerHTML =
       donations.length
         ? donations.slice(0, 8).map(d => `
           <tr>
             <td>${escapeHtml(d.food_name)}</td>
-            <td>${d.quantity_kg} kg</td>
+            <td>${escapeHtml(d.quantity_kg)} kg</td>
             <td>${escapeHtml(d.donor_name)}</td>
             <td>${badge(d.status)}</td>
           </tr>
         `).join("")
-        : `<tr><td colspan="4" class="empty">No donations yet.</td></tr>`;
+        : `
+          <tr>
+            <td colspan="4" class="empty">No donations yet.</td>
+          </tr>
+        `;
 
 
+    // FOOD REQUESTS
     document.getElementById("requestCards").innerHTML =
       requests.length
         ? requests.map(r => `
           <div class="request-card">
-            <p class="eyebrow">REQUEST #${r.id}</p>
+            <p class="eyebrow">REQUEST #${escapeHtml(r.id)}</p>
             <h4>${escapeHtml(r.organization_name)}</h4>
             <p>${escapeHtml(r.description || "Food required")}</p>
-            <div class="need">${r.quantity_kg} kg needed</div>
+            <div class="need">${escapeHtml(r.quantity_kg)} kg needed</div>
             ${badge(r.status)}
           </div>
         `).join("")
-        : `<div class="request-card">
+        : `
+          <div class="request-card">
             <h4>No open requests</h4>
             <p>New community requests will appear here.</p>
-          </div>`;
+          </div>
+        `;
 
 
+    // PICKUPS
     document.getElementById("pickupTable").innerHTML =
       pickups.length
         ? pickups.map(p => `
@@ -117,71 +136,73 @@ async function loadData() {
             <td>${badge(p.status)}</td>
           </tr>
         `).join("")
-        : `<tr><td colspan="4" class="empty">No pickups yet.</td></tr>`;
+        : `
+          <tr>
+            <td colspan="4" class="empty">No pickups yet.</td>
+          </tr>
+        `;
 
-  } catch (e) {
-
-    document.getElementById("recentTable").innerHTML =
-      `<tr>
+  } catch (error) {
+    document.getElementById("recentTable").innerHTML = `
+      <tr>
         <td colspan="4" class="empty">
           Backend not running. Start the C++ server on port 8080.
         </td>
-      </tr>`;
-
+      </tr>
+    `;
   }
 }
 
 
-function escapeHtml(s = "") {
-  return String(s).replace(/[&<>"']/g, c => ({
+// HTML SAFETY
+function escapeHtml(value = "") {
+  return String(value).replace(/[&<>"']/g, char => ({
     "&": "&amp;",
     "<": "&lt;",
     ">": "&gt;",
     '"': "&quot;",
     "'": "&#039;"
-  }[c]));
+  })[char]);
 }
 
 
-document.getElementById("donationForm").onsubmit =
-  async e => {
+// DONATION FORM
+document.getElementById("donationForm").onsubmit = async e => {
+  e.preventDefault();
 
-    e.preventDefault();
+  const msg = document.getElementById("formMessage");
 
-    const msg = document.getElementById("formMessage");
+  const data = Object.fromEntries(
+    new FormData(e.target).entries()
+  );
 
-    const data = Object.fromEntries(
-      new FormData(e.target).entries()
-    );
+  data.quantity_kg = Number(data.quantity_kg);
 
-    data.quantity_kg = Number(data.quantity_kg);
+  try {
+    const response = await fetch(API + "/donations", {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json"
+      },
+      body: JSON.stringify(data)
+    });
 
-    try {
-
-      const r = await fetch(API + "/donations", {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json"
-        },
-        body: JSON.stringify(data)
-      });
-
-      if (!r.ok) throw new Error();
-
-      msg.textContent = "✓ Donation added successfully.";
-
-      e.target.reset();
-
-      loadData();
-
-    } catch (err) {
-
-      msg.textContent =
-        "Could not connect to the C++ backend.";
-
+    if (!response.ok) {
+      throw new Error("Donation failed");
     }
 
-  };
+    msg.textContent = "✓ Donation added successfully.";
+
+    e.target.reset();
+
+    loadData();
+
+  } catch (error) {
+    msg.textContent =
+      "Could not connect to the C++ backend.";
+  }
+};
 
 
+// INITIAL LOAD
 loadData();
