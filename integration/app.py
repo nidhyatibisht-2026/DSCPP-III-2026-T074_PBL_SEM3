@@ -27,13 +27,15 @@ app.secret_key = os.environ.get("FOODFLOW_SECRET_KEY", "foodflow-pbl-admin-sessi
 app.config["SESSION_PERMANENT"] = False
 cpp_lock = threading.RLock()
 
-# Predefined admin credentials: each admin has a separate login ID and password
-ADMIN_ACCOUNTS = {
-    "admin2": "Subhansh@2007",
-    "admin_nidhyati": "Nidhyati@Admin2",
-    "admin_jatin": "Jatin@Admin3",
-    "admin_vartika": "Vartika@Admin4",
-}
+# Admin credentials are configured separately on each computer
+ADMIN_USERNAME = os.environ.get("FOODFLOW_ADMIN_USERNAME", "").strip().lower()
+ADMIN_PASSWORD = os.environ.get("FOODFLOW_ADMIN_PASSWORD", "")
+
+if not ADMIN_USERNAME or not ADMIN_PASSWORD:
+    raise RuntimeError(
+        "Admin credentials are missing. "
+        "Set FOODFLOW_ADMIN_USERNAME and FOODFLOW_ADMIN_PASSWORD."
+    )
 
 
 def admin_required(fn):
@@ -122,8 +124,10 @@ def api_admin_login():
     username = str(body.get("username") or "").strip().lower()
     password = str(body.get("password") or "")
 
-    expected_password = ADMIN_ACCOUNTS.get(username)
-    if expected_password and hmac.compare_digest(password, expected_password):
+    if (
+        hmac.compare_digest(username, ADMIN_USERNAME)
+        and hmac.compare_digest(password, ADMIN_PASSWORD)
+    ):
         session.permanent = False
         session["is_admin"] = True
         session["admin_user"] = username
