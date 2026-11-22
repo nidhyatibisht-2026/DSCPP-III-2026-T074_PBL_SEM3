@@ -876,8 +876,63 @@ textarea {
     padding: 3px 12px;
   }
 
-  #adminAccessBtn {
-    padding: 10px 12px;
-    font-size: 12px;
+  /* ADMIN ACCESS BUTTON */
+
+.admin-access-btn {
+    background: #183b2b !important;
+    border: 1px solid #356b4b !important;
+    margin-left: 8px;
+}
+
+.admin-access-btn:hover {
+    background: #356b4b !important;
+}
+
+
+/* ADMIN DIALOG */
+
+.admin-dialog {
+    width: min(440px, calc(100% - 32px));
+    border: none;
+    border-radius: 18px;
+    padding: 0;
+    background: #ffffff;
+    color: #20231f;
+    box-shadow: 0 20px 60px rgba(0, 0, 0, 0.2);
+}
+
+.admin-dialog::backdrop {
+    background: rgba(10, 25, 16, 0.55);
+    backdrop-filter: blur(3px);
+}
+
+.admin-dialog-content {
+    padding: 28px;
+}
+
+.admin-dialog-content h2 {
+    font-family: 'Playfair Display', serif;
+    font-size: 28px;
+    margin: 0 0 14px;
+    color: #183b2b;
+}
+
+.admin-dialog-content p {
+    line-height: 1.6;
+    color: #536257;
+}
+
+.admin-dialog-content ol {
+    padding-left: 22px;
+    line-height: 2;
+    color: #35483b;
+}
+
+.admin-note {
+    background: #f1f5f0;
+    padding: 12px;
+    border-radius: 10px;
+    font-size: 13px;
+
   }
 }
