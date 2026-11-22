@@ -3,14 +3,16 @@
 from __future__ import annotations
 
 import atexit
+import hmac
 import os
 import sqlite3
 import threading
 import time
 from contextlib import contextmanager
+from functools import wraps
 from pathlib import Path
 
-from flask import Flask, jsonify, request, send_from_directory
+from flask import Flask, jsonify, request, send_from_directory, session
 
 from cpp_bridge import CppBridge
 
@@ -21,7 +23,26 @@ FRONTEND = ROOT / "frontend"
 os.chdir(ROOT)
 
 app = Flask(__name__, static_folder=None)
+app.secret_key = os.environ.get("FOODFLOW_SECRET_KEY", "foodflow-pbl-admin-session-key")
+app.config["SESSION_PERMANENT"] = False
 cpp_lock = threading.RLock()
+
+# Predefined admin credentials: each admin has a separate login ID and password
+ADMIN_ACCOUNTS = {
+    "admin2": "Subhansh@2007",
+    "admin_nidhyati": "Nidhyati@Admin2",
+    "admin_jatin": "Jatin@Admin3",
+    "admin_vartika": "Vartika@Admin4",
+}
+
+
+def admin_required(fn):
+    @wraps(fn)
+    def wrapper(*args, **kwargs):
+        if not session.get("is_admin"):
+            return jsonify({"ok": False, "authenticated": False, "error": "Admin login required"}), 401
+        return fn(*args, **kwargs)
+    return wrapper
 
 
 def connect_db():
@@ -72,6 +93,19 @@ def user_row(conn, user_id):
     return conn.execute("SELECT * FROM users WHERE id = ?", (user_id,)).fetchone()
 
 
+def human_readable_expiry(expiry_ts: int | None) -> dict:
+    if not expiry_ts:
+        return {}
+    now_ts = int(time.time())
+    rem_mins = max(0, int((expiry_ts - now_ts) / 60))
+    hours = rem_mins // 60
+    mins = rem_mins % 60
+    return {
+        "expires_at": time.strftime("%Y-%m-%d %I:%M %p", time.localtime(expiry_ts)),
+        "time_remaining": f"{hours}h {mins}m",
+    }
+
+
 @app.get("/")
 def index():
     return send_from_directory(FRONTEND, "index.html")
@@ -80,6 +114,198 @@ def index():
 @app.get("/<path:filename>")
 def frontend_file(filename):
     return send_from_directory(FRONTEND, filename)
+
+
+@app.post("/api/admin/login")
+def api_admin_login():
+    body = json_body()
+    username = str(body.get("username") or "").strip().lower()
+    password = str(body.get("password") or "")
+
+    expected_password = ADMIN_ACCOUNTS.get(username)
+    if expected_password and hmac.compare_digest(password, expected_password):
+        session.permanent = False
+        session["is_admin"] = True
+        session["admin_user"] = username
+        return jsonify({
+            "ok": True,
+            "authenticated": True,
+            "admin_user": username,
+        })
+
+    return jsonify({
+        "ok": False,
+        "authenticated": False,
+        "error": "Invalid admin ID or password",
+    }), 401
+
+
+@app.post("/api/admin/logout")
+def api_admin_logout():
+    session.pop("is_admin", None)
+    session.pop("admin_user", None)
+    return jsonify({"ok": True, "authenticated": False, "admin_user": None})
+
+
+@app.get("/api/admin/session")
+def api_admin_session():
+    if session.get("is_admin"):
+        return jsonify({
+            "ok": True,
+            "authenticated": True,
+            "admin_user": session.get("admin_user"),
+        })
+    return jsonify({"ok": True, "authenticated": False, "admin_user": None})
+
+
+@app.post("/api/admin/menu/<int:option_id>")
+@admin_required
+def api_admin_menu(option_id: int):
+    body = json_body()
+    target_id = body.get("target_id")
+
+    try:
+        if option_id == 1:
+            with cpp_lock:
+                if hasattr(cpp, "process_matching"):
+                    cpp.process_matching()
+                elif hasattr(cpp, "match_orders"):
+                    cpp.match_orders()
+            return jsonify({"ok": True, "title": "1. Process Matching Pipeline", "message": "Matching pipeline executed."})
+
+        if option_id == 2:
+            with db_connection() as conn:
+                raw_rows = conn.execute(
+                    "SELECT food_id, donor_id, name, category, quantity, diet_type, expiry_time "
+                    "FROM food_items WHERE is_assigned = 0 AND is_cancelled = 0 AND is_expired = 0 ORDER BY food_id"
+                ).fetchall()
+                rows = []
+                for r in raw_rows:
+                    item = {
+                        "food_id": r["food_id"],
+                        "donor_id": r["donor_id"],
+                        "name": r["name"],
+                        "category": r["category"],
+                        "quantity": r["quantity"],
+                        "diet_type": r["diet_type"],
+                    }
+                    item.update(human_readable_expiry(r["expiry_time"]))
+                    rows.append(item)
+            return jsonify({"ok": True, "title": "2. Display Food Inventory", "items": rows})
+
+        if option_id == 3:
+            with db_connection() as conn:
+                raw_rows = conn.execute(
+                    "SELECT food_id, name, quantity, expiry_time FROM food_items "
+                    "WHERE is_assigned = 0 AND is_cancelled = 0 AND is_expired = 0 ORDER BY expiry_time ASC"
+                ).fetchall()
+                rows = []
+                for r in raw_rows:
+                    item = {
+                        "food_id": r["food_id"],
+                        "name": r["name"],
+                        "quantity": r["quantity"],
+                    }
+                    item.update(human_readable_expiry(r["expiry_time"]))
+                    rows.append(item)
+            return jsonify({"ok": True, "title": "3. Display Expiry Min Heap", "items": rows})
+
+        if option_id == 4:
+            with db_connection() as conn:
+                rows = [dict(r) for r in conn.execute(
+                    "SELECT request_id, recipient_id, food_name, quantity, allergies, status "
+                    "FROM food_requests WHERE status = 'Pending' AND quantity > 0 ORDER BY request_id ASC"
+                ).fetchall()]
+            return jsonify({"ok": True, "title": "4. Display Custom FIFO Queue", "items": rows})
+
+        if option_id == 5:
+            with db_connection() as conn:
+                rows = [dict(r) for r in conn.execute("SELECT * FROM users").fetchall()]
+            return jsonify({"ok": True, "title": "5. Display Registered Users", "items": rows})
+
+        if option_id == 6:
+            with cpp_lock:
+                cpp.purge_expired()
+            return jsonify({"ok": True, "title": "6. Run Expiry Sweep", "message": "Expired food sweep completed."})
+
+        if option_id == 7:
+            fid = as_int(target_id, "target_id")
+            with db_connection() as conn:
+                row = conn.execute("SELECT donor_id FROM food_items WHERE food_id = ?", (fid,)).fetchone()
+                if not row:
+                    return error(f"Food item #{fid} not found", 404)
+            with cpp_lock:
+                ok = cpp.cancel_donation(fid, row["donor_id"])
+            if not ok:
+                return error(f"Could not remove food item #{fid}", 409)
+            return jsonify({"ok": True, "title": "7. Remove Food Item", "message": f"Food item #{fid} removed/cancelled."})
+
+        if option_id == 8:
+            rid = as_int(target_id, "target_id")
+            with db_connection() as conn:
+                cur = conn.execute(
+                    "UPDATE food_requests SET status = 'Cancelled' WHERE request_id = ?", (rid,)
+                )
+                conn.commit()
+                if cur.rowcount == 0:
+                    return error(f"Request #{rid} not found", 404)
+            return jsonify({"ok": True, "title": "8. Cancel Recipient Request", "message": f"Request #{rid} cancelled/rejected."})
+
+        if option_id == 9:
+            with db_connection() as conn:
+                raw_rows = conn.execute(
+                    "SELECT food_id, donor_id, name, quantity, expiry_time, is_assigned, is_cancelled, is_expired "
+                    "FROM food_items ORDER BY food_id DESC"
+                ).fetchall()
+                rows = []
+                for r in raw_rows:
+                    item = {
+                        "food_id": r["food_id"],
+                        "donor_id": r["donor_id"],
+                        "name": r["name"],
+                        "quantity": r["quantity"],
+                        "is_assigned": r["is_assigned"],
+                        "is_cancelled": r["is_cancelled"],
+                        "is_expired": r["is_expired"],
+                    }
+                    item.update(human_readable_expiry(r["expiry_time"]))
+                    rows.append(item)
+            return jsonify({"ok": True, "title": "9. Display Complete Food History", "items": rows})
+
+        if option_id == 10:
+            with db_connection() as conn:
+                rows = [dict(r) for r in conn.execute(
+                    "SELECT order_id, food_id, request_id, donor_id, recipient_id, quantity, delivery_cost, status, is_spoiled "
+                    "FROM orders ORDER BY order_id DESC"
+                ).fetchall()]
+            return jsonify({"ok": True, "title": "10. Display Order Transaction History", "items": rows})
+
+        if option_id == 11:
+            uid = as_int(target_id, "target_id")
+            with db_connection() as conn:
+                row = conn.execute("SELECT id, is_active FROM users WHERE id = ?", (uid,)).fetchone()
+                if not row:
+                    return error(f"User #{uid} not found", 404)
+                new_status = 0 if row["is_active"] else 1
+                conn.execute("UPDATE users SET is_active = ? WHERE id = ?", (new_status, uid))
+                conn.commit()
+            state_label = "Active" if new_status else "Inactive"
+            return jsonify({"ok": True, "title": "11. Deactivate / Reactivate User", "message": f"User #{uid} is now {state_label}."})
+
+        if option_id == 12:
+            with db_connection() as conn:
+                rows = [dict(r) for r in conn.execute(
+                    "SELECT request_id, recipient_id, food_name, quantity, allergies, status "
+                    "FROM food_requests ORDER BY request_id DESC"
+                ).fetchall()]
+            return jsonify({"ok": True, "title": "12. Display Complete Food Request History", "items": rows})
+
+        return error("Invalid admin menu option (choose 1–12)", 400)
+    except ValueError as exc:
+        return error(exc, 400)
+    except Exception as exc:
+        app.logger.exception("Admin menu option %s failed", option_id)
+        return error(exc, 500)
 
 
 @app.get("/api/stats")
