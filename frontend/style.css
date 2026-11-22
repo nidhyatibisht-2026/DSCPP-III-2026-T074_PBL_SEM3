@@ -243,7 +243,6 @@ button {
     opacity: 0;
     transform: translateY(8px);
   }
-
   to {
     opacity: 1;
     transform: translateY(0);
@@ -371,6 +370,19 @@ button {
 
 .primary:active {
   transform: translateY(0);
+}
+
+/* ADMIN ACCESS BUTTON */
+
+#adminAccessBtn {
+  color: #ffffff;
+  background: var(--green-800);
+  margin-top: 0;
+  white-space: nowrap;
+}
+
+#adminAccessBtn:hover {
+  background: var(--green-700);
 }
 
 /* STATISTICS */
@@ -557,10 +569,7 @@ textarea {
   border: 1px solid #d8dfd7;
   border-radius: 10px;
   outline: none;
-  transition:
-    border-color 0.15s ease,
-    box-shadow 0.15s ease,
-    background 0.15s ease;
+  transition: 0.15s ease;
 }
 
 input::placeholder,
@@ -596,7 +605,6 @@ textarea {
 
 .form-submit:hover {
   background: var(--green-700);
-  box-shadow: 0 12px 22px rgba(31, 81, 58, 0.24);
 }
 
 .message {
@@ -715,6 +723,7 @@ textarea {
 /* MEDIUM SCREENS */
 
 @media (max-width: 1100px) {
+
   .sidebar {
     width: 86px;
     padding: 24px 12px;
@@ -768,6 +777,7 @@ textarea {
 /* MOBILE SCREENS */
 
 @media (max-width: 650px) {
+
   .sidebar {
     inset: auto 0 0 0;
     width: 100%;
@@ -865,72 +875,9 @@ textarea {
   .table-card {
     padding: 3px 12px;
   }
-}
 
-/* =====================================================================
-   FoodRescue integration additions (merged — keep at end of file)
-   Adds: select styling, warn badge, small buttons, form hint,
-   error message color, 5th mobile nav column
-   ===================================================================== */
-
-select {
-  display: block;
-  width: 100%;
-  padding: 13px 14px;
-  color: var(--text);
-  background: #fbfcfa;
-  border: 1px solid #d8dfd7;
-  border-radius: 10px;
-  outline: none;
-  font: inherit;
-  transition:
-    border-color 0.15s ease,
-    box-shadow 0.15s ease,
-    background 0.15s ease;
-}
-
-select:focus {
-  background: #ffffff;
-  border-color: #4e9b6f;
-  box-shadow: 0 0 0 4px rgba(58, 145, 96, 0.12);
-}
-
-.message.error {
-  color: #b3261e;
-}
-
-.badge.warn {
-  color: #8a5a00;
-  background: #fdf3d7;
-  border-color: #f0dfb0;
-}
-
-.btn-small {
-  padding: 6px 10px;
-  margin: 2px 6px 2px 0;
-  color: var(--green-800);
-  background: #ffffff;
-  border: 1px solid var(--line);
-  border-radius: 8px;
-  font-size: 12px;
-  font-weight: 800;
-  cursor: pointer;
-  transition: 0.15s ease;
-}
-
-.btn-small:hover {
-  background: var(--green-100);
-  border-color: #bcd8c6;
-}
-
-.form-hint {
-  margin: -6px 0 0;
-  color: #8b948e;
-  font-size: 12px;
-}
-
-@media (max-width: 650px) {
-  .sidebar nav {
-    grid-template-columns: repeat(5, 1fr);
+  #adminAccessBtn {
+    padding: 10px 12px;
+    font-size: 12px;
   }
 }
